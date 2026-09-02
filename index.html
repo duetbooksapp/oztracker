@@ -89,6 +89,8 @@ tr:last-child td{border-bottom:none}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.show{opacity:1}
 .warn{background:var(--atint);border:1px solid var(--amb);border-radius:var(--radius);padding:8px 12px;font-size:12px;color:#9a6a10;margin-bottom:10px}
+#dropZone{border:2px dashed var(--border);border-radius:var(--radius);padding:20px 12px;text-align:center;color:var(--muted);cursor:pointer;font-size:13px;background:#fff;line-height:1.5}
+#dropZone.over{border-color:var(--pri);background:var(--ptint)}
 
 /* Invoice print view */
 #invoiceView{display:none;position:fixed;inset:0;background:#fff;z-index:200;overflow:auto;padding:40px 30px;color:#111}
@@ -116,7 +118,7 @@ tr:last-child td{border-bottom:none}
 </head>
 <body>
 
-<div class="topbar"><div><span class="brand">OZTracker</span><span class="sub">Calls & Billing</span></div><span id="syncdot">●</span></div>
+<div class="topbar"><div><span class="brand">OZTracker</span><span class="sub" id="verTag">Calls & Billing</span></div><span id="syncdot">●</span></div>
 
 <div class="tabs">
  <div class="tab active" data-t="dash" onclick="showTab('dash')">Dashboard</div>
@@ -198,10 +200,14 @@ tr:last-child td{border-bottom:none}
 <!-- ══════════ IMPORT ══════════ -->
 <div class="panel" id="p-import">
  <div class="card">
-  <h3>Paste from HubSpot</h3>
-  <div class="muted" style="margin-bottom:8px">Copy your call list from HubSpot (Call Title / Activity date / Call outcome) and paste below. Tip: widen the Call Title column first so names aren't cut off.</div>
+  <h3>Import from HubSpot</h3>
+  <div class="muted" style="margin-bottom:8px">Take screenshots of your call list in HubSpot, then paste them here. Tip: widen the Call Title column first so names aren't cut off.</div>
   <label>These calls are from</label><input type="date" id="impDate">
-  <label>Paste here</label><textarea id="impText" placeholder="Call with Adam Walter	Today at 5:58 PM EDT	Steve Maxim	Left voicemail&#10;..."></textarea>
+  <label>Screenshots</label>
+  <div id="dropZone" onclick="document.getElementById('impFiles').click()">📸 <b>Paste a screenshot</b> (Cmd+V / long-press → Paste)<br>or tap to choose photos · drag &amp; drop works too · multiple pages OK</div>
+  <input type="file" id="impFiles" accept="image/*" multiple style="display:none">
+  <div id="ocrStatus" class="muted" style="margin-top:6px"></div>
+  <label>Or paste text</label><textarea id="impText" placeholder="Call with Adam Walter	Today at 5:58 PM EDT	Steve Maxim	Left voicemail&#10;..."></textarea>
   <div class="btnrow"><button class="btn" onclick="parsePaste()">Preview Import</button><button class="btn ghost" onclick="document.getElementById('impText').value=''">Clear</button></div>
  </div>
  <div class="card" id="impPreviewCard" style="display:none">
@@ -257,6 +263,7 @@ tr:last-child td{border-bottom:none}
   </div>
   <div class="muted" style="margin-top:8px" id="dataInfo"></div>
  </div>
+ <div class="card"><h3>About</h3><div id="aboutBox"></div></div>
 </div>
 
 <!-- ══════════ INVOICE VIEW ══════════ -->
@@ -272,6 +279,12 @@ tr:last-child td{border-bottom:none}
 
 <script>
 'use strict';
+// ─── Version ───
+var APP_VERSION='1.1.0';
+var CHANGELOG=[
+ ['1.1.0','2026-09-02','Screenshot import: paste or drop HubSpot snapshots — OCR reads the calls right off the image. Version tracking added.'],
+ ['1.0.0','2026-09-02','First release: inbound/outbound call log, HubSpot text paste, nurture queue, funnel dashboard, invoicing with paid tracking, REP1 history import.']
+];
 // ─── Storage ───
 var BASE='https://duet-crm-default-rtdb.firebaseio.com/oztracker';
 var DB={calls:{},products:{},invoices:{},settings:null};
@@ -411,7 +424,110 @@ function completeNurturesFor(name,byCallId){
  });
 }
 
-// ─── Import (paste parser) ───
+// ─── Import: screenshot OCR ───
+var tessP=null;
+function ensureTesseract(){
+ if(window.Tesseract)return Promise.resolve();
+ if(tessP)return tessP;
+ tessP=new Promise(function(res,rej){
+  var s=document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js';
+  s.onload=res;s.onerror=function(){tessP=null;rej();};
+  document.head.appendChild(s);
+ });
+ return tessP;
+}
+function prepImage(f){
+ if(f&&f.getContext)return Promise.resolve(f);
+ return new Promise(function(res,rej){
+  var img=new Image();
+  img.onload=function(){
+   var scale=img.width<1400?2:1;
+   var cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
+   var cx=cv.getContext('2d');
+   cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);
+   cx.drawImage(img,0,0,cv.width,cv.height);
+   URL.revokeObjectURL(img.src);res(cv);
+  };
+  img.onerror=rej;
+  img.src=URL.createObjectURL(f);
+ });
+}
+function handleImages(list){
+ list=Array.prototype.slice.call(list);
+ if(!list.length)return;
+ var st=document.getElementById('ocrStatus');
+ st.textContent='Loading reader (first time only, ~10 MB)…';
+ ensureTesseract().then(function(){
+  var texts=[];var chain=Promise.resolve();
+  list.forEach(function(f,idx){
+   chain=chain.then(function(){
+    st.textContent='Reading screenshot '+(idx+1)+' of '+list.length+'…';
+    return prepImage(f).then(function(cv){
+     return Tesseract.recognize(cv,'eng',{logger:function(m){
+      if(m.status==='recognizing text')st.textContent='Reading screenshot '+(idx+1)+' of '+list.length+' — '+Math.round(m.progress*100)+'%';
+     }});
+    }).then(function(r){texts.push(r.data.text||'');});
+   });
+  });
+  return chain.then(function(){
+   st.textContent='';
+   var raw=texts.join('\n').trim();
+   document.getElementById('impText').value=raw;
+   parsePaste();
+   if(!parsed.length)st.textContent='Couldn’t read any calls from that image — try a sharper or more zoomed-in screenshot.';
+  });
+ }).catch(function(){st.textContent='Couldn’t load the OCR reader — check your connection and try again.';});
+}
+document.addEventListener('paste',function(e){
+ if(!document.getElementById('p-import').classList.contains('active'))return;
+ if(e.target&&e.target.id==='impText'&&!(e.clipboardData&&e.clipboardData.files&&e.clipboardData.files.length))return;
+ var items=(e.clipboardData||{}).items||[];var imgs=[];
+ for(var i=0;i<items.length;i++){if(items[i].type&&items[i].type.indexOf('image')===0){var f=items[i].getAsFile();if(f)imgs.push(f);}}
+ if(imgs.length){e.preventDefault();handleImages(imgs);}
+});
+(function(){
+ var dz=document.getElementById('dropZone');
+ dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('over');});
+ dz.addEventListener('dragleave',function(){dz.classList.remove('over');});
+ dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('over');
+  var fs=Array.prototype.filter.call(e.dataTransfer.files||[],function(f){return f.type.indexOf('image')===0;});
+  handleImages(fs);});
+ document.getElementById('impFiles').addEventListener('change',function(e){handleImages(e.target.files);this.value='';});
+})();
+
+// ─── Import (parser) ───
+var OUTCOME_KEYS=[
+ ['left voicemail','voicemail'],['voicemail','voicemail'],['no answer','no_answer'],['busy','no_answer'],
+ ['live message','live_message'],['wrong number','bad_number'],['bad number','bad_number'],
+ ['not interested','not_interested'],['nurture','nurture'],['booked','booked'],['connected','connected']
+];
+function findOutcome(s){
+ s=(s||'').toLowerCase().replace(/\s+/g,' ');
+ var best=null,bestIdx=-1;
+ OUTCOME_KEYS.forEach(function(k){
+  var i=s.lastIndexOf(k[0]);
+  if(i>bestIdx){bestIdx=i;best=k[1];}
+ });
+ if(best===null&&/(^|\s)(--|—)(\s|$)/.test(s))best='none';
+ return best||'none';
+}
+// Whole row on one line (OCR output): "Call with Adam Walter Today at 5:58 PM EDT SM Steve Maxim... Left voicemail"
+function parseRowLine(line,baseDate){
+ var m=line.match(/call with (.+)/i);if(!m)return null;
+ var rest=m[1];
+ var t=rest.match(/(today|yesterday|[a-z]{3,9}\.? ?\d{1,2}(?:, ?\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4})? ?at (\d{1,2})[:.](\d{2}) ?([ap])\.?m\.?/i);
+ if(!t)return null;
+ var name=rest.slice(0,t.index).trim().replace(/[>|©@()\[\]~•·«»]+$/,'').trim();
+ var rec={name:name,time:(+t[2])+':'+t[3]+' '+t[4].toUpperCase()+'M',date:baseDate,disp:'none',trunc:false};
+ if(/(\.{2,}|…)$/.test(rec.name)){rec.trunc=true;rec.name=rec.name.replace(/(\.{2,}|…)$/,'').trim();}
+ var dword=(t[1]||'today').toLowerCase();
+ if(dword==='today')rec.date=baseDate;
+ else if(dword==='yesterday')rec.date=addDays(baseDate,-1);
+ else{var pd=new Date(t[1]+(/\d{4}/.test(t[1])?'':', '+new Date().getFullYear()));if(!isNaN(pd))rec.date=pd.toISOString().slice(0,10);}
+ rec.disp=findOutcome(rest.slice(t.index+t[0].length));
+ return rec;
+}
 var parsed=[];
 function parsePaste(){
  var raw=document.getElementById('impText').value;
@@ -427,6 +543,8 @@ function parsePaste(){
  var SKIP=/^(call title|activity date|activity assigned|call outcome|sm$|steve maxim)/i;
  parsed=[];var cur=null;
  lines.forEach(function(line){
+  var row=parseRowLine(line,baseDate);
+  if(row){if(cur){parsed.push(cur);cur=null;}parsed.push(row);return;}
   var m=line.match(/^call with (.+)$/i);
   if(m){if(cur)parsed.push(cur);cur={name:m[1].trim(),time:'',date:baseDate,disp:'none',trunc:false};
    if(/(\.\.\.|…)$/.test(cur.name)){cur.trunc=true;cur.name=cur.name.replace(/(\.\.\.|…)$/,'').trim();}
@@ -701,6 +819,8 @@ function renderSettings(){
  var nCalls=Object.keys(DB.calls).length;
  document.getElementById('dataInfo').textContent=nCalls+' calls · '+Object.keys(DB.invoices).length+' invoices stored'+(s.seeded?' · REP1 history imported ✓':'');
  document.getElementById('seedBtn').disabled=!!s.seeded;
+ document.getElementById('aboutBox').innerHTML='<div style="font-weight:700;margin-bottom:8px">OZTracker v'+APP_VERSION+'</div>'
+  +CHANGELOG.map(function(c){return '<div style="margin-bottom:8px"><span class="chip p">v'+c[0]+'</span> <span class="muted">'+niceDate(c[1])+'</span><div class="muted" style="margin-top:2px">'+c[2]+'</div></div>';}).join('');
 }
 function updProd(k,f,v){DB.products[k][f]=v;fbPut('products/'+k,DB.products[k]);fillProdSelect();}
 function addProduct(){
@@ -755,6 +875,7 @@ function importSeed(){
 }
 
 // ─── Init ───
+document.getElementById('verTag').textContent='Calls & Billing · v'+APP_VERSION;
 document.getElementById('lcDate').value=todayStr();
 document.getElementById('impDate').value=todayStr();
 loadAll().then(function(){
