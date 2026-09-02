@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#534AB7">
+<title>OZTracker — Calls & Billing</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+--pri:#534AB7;--grn:#1D9E75;--amb:#EF9F27;--red:#D94545;--dgrn:#0F6E56;
+--bg:#f5f5f3;--card:#fff;--txt:#222;--muted:#666;--border:#ddd;
+--ptint:#EEEDFE;--gtint:#F0FBF7;--atint:#FFFCF5;--rtint:#FEF2F2;
+--radius:8px;--shadow:0 1px 3px rgba(0,0,0,.08)
+}
+html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--txt);font-size:14px;-webkit-tap-highlight-color:transparent}
+
+.topbar{background:var(--pri);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar .brand{font-weight:700;font-size:17px;letter-spacing:-.3px}
+.topbar .sub{font-size:11px;opacity:.75;margin-left:8px}
+#syncdot{font-size:11px;opacity:.85}
+
+.tabs{display:flex;background:var(--card);border-bottom:1px solid var(--border);position:sticky;top:42px;z-index:99;overflow-x:auto}
+.tab{flex:1;text-align:center;padding:10px 6px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.tab.active{color:var(--pri);border-bottom-color:var(--pri)}
+.tab .badge{display:inline-block;background:var(--red);color:#fff;border-radius:9px;font-size:9px;padding:1px 5px;margin-left:3px;vertical-align:top}
+
+.panel{display:none;padding:16px;padding-bottom:80px;max-width:860px;margin:0 auto}
+.panel.active{display:block}
+
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
+.card h3{font-size:14px;margin-bottom:10px;color:var(--pri)}
+.card h3 .rt{float:right;font-size:11px;color:var(--muted);font-weight:400}
+
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:10px;margin-bottom:12px}
+.stat-card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:12px 8px;text-align:center;border-top:3px solid var(--pri)}
+.stat-card.grn{border-top-color:var(--grn)}
+.stat-card.amb{border-top-color:var(--amb)}
+.stat-card.red{border-top-color:var(--red)}
+.stat-card .num{font-size:22px;font-weight:700}
+.stat-card .lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+
+.seg{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.seg button{padding:6px 12px;border:1px solid var(--border);background:var(--card);border-radius:20px;font-size:12px;cursor:pointer;color:var(--muted);font-weight:600}
+.seg button.on{background:var(--pri);border-color:var(--pri);color:#fff}
+
+label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin:12px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+input[type=text],input[type=date],input[type=time],input[type=number],select,textarea{width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius);font-size:14px;font-family:inherit;background:#fff;color:var(--txt)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--pri);box-shadow:0 0 0 3px rgba(83,74,183,.15)}
+textarea{min-height:120px;font-size:12px}
+
+.btn{padding:10px 18px;background:var(--pri);color:#fff;border:none;border-radius:var(--radius);font-size:14px;font-weight:600;cursor:pointer}
+.btn.grn{background:var(--grn)}
+.btn.amb{background:var(--amb)}
+.btn.red{background:var(--red)}
+.btn.ghost{background:transparent;color:var(--pri);border:1px solid var(--pri)}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:6px}
+.btn:disabled{opacity:.4;cursor:default}
+.btnrow{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+
+.pillrow{display:flex;gap:6px;flex-wrap:wrap}
+.pill{padding:8px 12px;border:1px solid var(--border);border-radius:20px;font-size:12px;font-weight:600;cursor:pointer;background:#fff;color:var(--muted)}
+.pill.on{border-color:var(--pri);background:var(--ptint);color:var(--pri)}
+.pill.on.g{border-color:var(--grn);background:var(--gtint);color:var(--dgrn)}
+.pill.on.r{border-color:var(--red);background:var(--rtint);color:var(--red)}
+.pill.on.a{border-color:var(--amb);background:var(--atint);color:#9a6a10}
+
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;padding:6px 8px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border)}
+td{padding:7px 8px;border-bottom:1px solid #eee;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.tblwrap{overflow-x:auto}
+
+.chip{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
+.chip.g{background:var(--gtint);color:var(--dgrn)}
+.chip.r{background:var(--rtint);color:var(--red)}
+.chip.a{background:var(--atint);color:#9a6a10}
+.chip.p{background:var(--ptint);color:var(--pri)}
+.chip.m{background:#eee;color:var(--muted)}
+
+.nitem{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eee;gap:8px;flex-wrap:wrap}
+.nitem:last-child{border-bottom:none}
+.nitem .who{font-weight:600}
+.nitem .meta{font-size:11px;color:var(--muted)}
+.muted{color:var(--muted);font-size:12px}
+.empty{color:var(--muted);font-size:13px;text-align:center;padding:20px 0}
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.warn{background:var(--atint);border:1px solid var(--amb);border-radius:var(--radius);padding:8px 12px;font-size:12px;color:#9a6a10;margin-bottom:10px}
+
+/* Invoice print view */
+#invoiceView{display:none;position:fixed;inset:0;background:#fff;z-index:200;overflow:auto;padding:40px 30px;color:#111}
+#invoiceView.show{display:block}
+.inv-wrap{max-width:700px;margin:0 auto}
+.inv-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--pri);padding-bottom:16px;margin-bottom:24px}
+.inv-head h1{color:var(--pri);font-size:26px}
+.inv-head .no{text-align:right;font-size:13px;color:#444}
+.inv-parties{display:flex;justify-content:space-between;margin-bottom:24px;font-size:13px;gap:20px}
+.inv-parties h4{font-size:10px;text-transform:uppercase;color:#888;margin-bottom:4px;letter-spacing:.5px}
+.inv-parties div{white-space:pre-line}
+#invoiceView table{font-size:13px;margin-bottom:16px}
+#invoiceView th{background:var(--ptint);color:var(--pri);border-bottom:2px solid var(--pri);padding:8px}
+#invoiceView td{padding:8px;border-bottom:1px solid #eee}
+.inv-total{text-align:right;font-size:16px;font-weight:700;padding:10px 8px}
+.inv-foot{margin-top:30px;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:12px}
+.inv-actions{max-width:700px;margin:0 auto 20px;display:flex;gap:8px;justify-content:flex-end}
+@media print{
+ body>*{display:none!important}
+ #invoiceView{display:block!important;position:static;padding:0}
+ .inv-actions{display:none!important}
+}
+@media(max-width:600px){.tab{font-size:11px;padding:10px 3px}}
+</style>
+</head>
+<body>
+
+<div class="topbar"><div><span class="brand">OZTracker</span><span class="sub">Calls & Billing</span></div><span id="syncdot">●</span></div>
+
+<div class="tabs">
+ <div class="tab active" data-t="dash" onclick="showTab('dash')">Dashboard</div>
+ <div class="tab" data-t="log" onclick="showTab('log')">Log Call</div>
+ <div class="tab" data-t="import" onclick="showTab('import')">Import</div>
+ <div class="tab" data-t="nurture" onclick="showTab('nurture')">Nurture<span class="badge" id="nurtureBadge" style="display:none"></span></div>
+ <div class="tab" data-t="billing" onclick="showTab('billing')">Billing</div>
+ <div class="tab" data-t="settings" onclick="showTab('settings')">Settings</div>
+</div>
+
+<!-- ══════════ DASHBOARD ══════════ -->
+<div class="panel active" id="p-dash">
+ <div class="seg" id="periodSeg">
+  <button data-p="tm" class="on">This Month</button>
+  <button data-p="lm">Last Month</button>
+  <button data-p="q">Quarter</button>
+  <button data-p="y">Year</button>
+  <button data-p="all">All</button>
+ </div>
+ <div class="card"><h3>Outbound <span class="rt" id="dashPeriodLbl1"></span></h3>
+  <div class="stat-grid" id="outStats"></div>
+  <div class="muted" id="outNote"></div>
+ </div>
+ <div class="card"><h3>Inbound Sessions <span class="rt" id="dashPeriodLbl2"></span></h3>
+  <div class="stat-grid" id="inStats"></div>
+ </div>
+ <div class="card"><h3>Money</h3>
+  <div class="stat-grid" id="moneyStats"></div>
+ </div>
+ <div class="card"><h3>Recent Activity</h3><div class="tblwrap"><table id="recentTbl"></table></div></div>
+</div>
+
+<!-- ══════════ LOG CALL ══════════ -->
+<div class="panel" id="p-log">
+ <div class="card">
+  <h3>Log a Call</h3>
+  <div class="pillrow" id="dirPills">
+   <div class="pill on" data-d="in" onclick="setDir('in')">📥 Inbound (booked session)</div>
+   <div class="pill" data-d="out" onclick="setDir('out')">📤 Outbound (dial)</div>
+  </div>
+  <label>Date</label><input type="date" id="lcDate">
+  <label>Name</label><input type="text" id="lcName" placeholder="Prospect name" list="nameList"><datalist id="nameList"></datalist>
+
+  <div id="lcInbound">
+   <label>Outcome</label>
+   <div class="pillrow" id="inOutPills">
+    <div class="pill" data-o="showed_closed" onclick="setInOut('showed_closed')">✅ Showed — Closed</div>
+    <div class="pill" data-o="showed_noclose" onclick="setInOut('showed_noclose')">💬 Showed — No close</div>
+    <div class="pill" data-o="noshow" onclick="setInOut('noshow')">👻 No-show</div>
+    <div class="pill" data-o="scheduled" onclick="setInOut('scheduled')">📅 Scheduled (upcoming)</div>
+   </div>
+   <div id="lcProdWrap" style="display:none">
+    <label>Product</label><select id="lcProd" onchange="prodChanged()"></select>
+    <label>Amount (your commission)</label><input type="number" id="lcAmt" step="1">
+   </div>
+  </div>
+
+  <div id="lcOutbound" style="display:none">
+   <label>Disposition</label>
+   <div class="pillrow" id="outOutPills">
+    <div class="pill" data-o="no_answer" onclick="setOutOut('no_answer')">No answer</div>
+    <div class="pill" data-o="voicemail" onclick="setOutOut('voicemail')">Left voicemail</div>
+    <div class="pill" data-o="live_message" onclick="setOutOut('live_message')">Left live message</div>
+    <div class="pill" data-o="bad_number" onclick="setOutOut('bad_number')">Bad number</div>
+    <div class="pill" data-o="not_interested" onclick="setOutOut('not_interested')">☎️ Not interested</div>
+    <div class="pill" data-o="nurture" onclick="setOutOut('nurture')">🌱 Nurture</div>
+    <div class="pill" data-o="booked" onclick="setOutOut('booked')">🗓️ Booked!</div>
+   </div>
+   <div id="lcDueWrap" style="display:none">
+    <label>Follow up on</label><input type="date" id="lcDue">
+   </div>
+  </div>
+
+  <label>Notes</label><input type="text" id="lcNotes" placeholder="Optional">
+  <div class="btnrow"><button class="btn" onclick="saveLogCall()">Save Call</button></div>
+ </div>
+</div>
+
+<!-- ══════════ IMPORT ══════════ -->
+<div class="panel" id="p-import">
+ <div class="card">
+  <h3>Paste from HubSpot</h3>
+  <div class="muted" style="margin-bottom:8px">Copy your call list from HubSpot (Call Title / Activity date / Call outcome) and paste below. Tip: widen the Call Title column first so names aren't cut off.</div>
+  <label>These calls are from</label><input type="date" id="impDate">
+  <label>Paste here</label><textarea id="impText" placeholder="Call with Adam Walter	Today at 5:58 PM EDT	Steve Maxim	Left voicemail&#10;..."></textarea>
+  <div class="btnrow"><button class="btn" onclick="parsePaste()">Preview Import</button><button class="btn ghost" onclick="document.getElementById('impText').value=''">Clear</button></div>
+ </div>
+ <div class="card" id="impPreviewCard" style="display:none">
+  <h3>Preview <span class="rt" id="impCount"></span></h3>
+  <div id="impWarn"></div>
+  <div class="tblwrap"><table id="impTbl"></table></div>
+  <div class="btnrow"><button class="btn grn" onclick="commitImport()">Import Checked Calls</button></div>
+ </div>
+</div>
+
+<!-- ══════════ NURTURE ══════════ -->
+<div class="panel" id="p-nurture">
+ <div class="card"><h3>🔴 Overdue</h3><div id="nOverdue"></div></div>
+ <div class="card"><h3>🟡 Due Today</h3><div id="nToday"></div></div>
+ <div class="card"><h3>🟢 Upcoming</h3><div id="nUpcoming"></div></div>
+ <div class="card"><h3>Needs Triage</h3>
+  <div class="muted" style="margin-bottom:6px">Imported "Connected" calls without a real outcome — tap to set one.</div>
+  <div id="nTriage"></div>
+ </div>
+</div>
+
+<!-- ══════════ BILLING ══════════ -->
+<div class="panel" id="p-billing">
+ <div class="card"><h3>Balance</h3><div class="stat-grid" id="billStats"></div></div>
+ <div class="card">
+  <h3>Unbilled Closes <span class="rt"><select id="billMonth" style="width:auto;padding:4px 8px;font-size:12px" onchange="renderBilling()"></select></span></h3>
+  <div class="tblwrap"><table id="unbilledTbl"></table></div>
+  <div class="btnrow"><button class="btn grn" id="genInvBtn" onclick="generateInvoice()">Generate Invoice</button></div>
+ </div>
+ <div class="card"><h3>Invoices</h3><div class="tblwrap"><table id="invTbl"></table></div></div>
+</div>
+
+<!-- ══════════ SETTINGS ══════════ -->
+<div class="panel" id="p-settings">
+ <div class="card"><h3>Products & Rates</h3>
+  <div class="tblwrap"><table id="prodTbl"></table></div>
+  <div class="btnrow"><button class="btn sm ghost" onclick="addProduct()">+ Add Product</button></div>
+  <div class="muted" style="margin-top:8px">Rate changes apply to new calls only — past calls keep the amount they were logged at.</div>
+ </div>
+ <div class="card"><h3>Nurture</h3>
+  <label>Default follow-up (days)</label><input type="number" id="setNurtureDays" style="max-width:120px">
+ </div>
+ <div class="card"><h3>Invoice Details</h3>
+  <label>From (you)</label><textarea id="setInvFrom" style="min-height:70px"></textarea>
+  <label>Bill To</label><textarea id="setInvTo" style="min-height:70px"></textarea>
+  <label>Payment terms note</label><input type="text" id="setInvTerms">
+ </div>
+ <div class="btnrow"><button class="btn" onclick="saveSettings()">Save Settings</button></div>
+ <div class="card" style="margin-top:12px"><h3>Data</h3>
+  <div class="btnrow">
+   <button class="btn sm ghost" onclick="exportJSON()">Export JSON backup</button>
+   <button class="btn sm ghost" id="seedBtn" onclick="importSeed()">Import REP1 history</button>
+  </div>
+  <div class="muted" style="margin-top:8px" id="dataInfo"></div>
+ </div>
+</div>
+
+<!-- ══════════ INVOICE VIEW ══════════ -->
+<div id="invoiceView">
+ <div class="inv-actions">
+  <button class="btn sm" onclick="window.print()">🖨️ Print / Save PDF</button>
+  <button class="btn sm ghost" onclick="closeInvoice()">Close</button>
+ </div>
+ <div class="inv-wrap" id="invBody"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+// ─── Storage ───
+var BASE='https://duet-crm-default-rtdb.firebaseio.com/oztracker';
+var DB={calls:{},products:{},invoices:{},settings:null};
+var CACHE_KEY='oztracker_cache_v1';
+var online=true;
+
+function setSync(ok,msg){online=ok;var d=document.getElementById('syncdot');d.textContent=ok?'● synced':'○ '+(msg||'offline');d.style.color=ok?'#B8F5DC':'#FFD9A0';}
+
+function fbPut(path,val){
+ localStorage.setItem(CACHE_KEY,JSON.stringify(DB));
+ if(val&&typeof val==='object'&&val._id){val=Object.assign({},val);delete val._id;}
+ return fetch(BASE+'/'+path+'.json',{method:'PUT',body:JSON.stringify(val)})
+  .then(function(r){if(!r.ok)throw 0;setSync(true);})
+  .catch(function(){setSync(false,'save failed — kept locally');});
+}
+function fbDel(path){
+ localStorage.setItem(CACHE_KEY,JSON.stringify(DB));
+ return fetch(BASE+'/'+path+'.json',{method:'DELETE'}).then(function(){setSync(true);}).catch(function(){setSync(false);});
+}
+function loadAll(){
+ return fetch(BASE+'.json').then(function(r){return r.json();}).then(function(data){
+  data=data||{};
+  DB.calls=data.calls||{};DB.products=data.products||{};DB.invoices=data.invoices||{};DB.settings=data.settings||null;
+  setSync(true);
+ }).catch(function(){
+  var c=localStorage.getItem(CACHE_KEY);
+  if(c){DB=JSON.parse(c);}
+  setSync(false,'offline — using local copy');
+ }).then(function(){
+  if(!DB.settings){DB.settings=defaultSettings();fbPut('settings',DB.settings);}
+  if(!Object.keys(DB.products).length){seedProducts();}
+  localStorage.setItem(CACHE_KEY,JSON.stringify(DB));
+ });
+}
+function defaultSettings(){return{nurtureDays:14,invFrom:'Steve Maxim\nSarasota, FL',invTo:'OZPros',invTerms:'Payable upon receipt. Thank you!',seeded:false};}
+function seedProducts(){
+ DB.products={p_blueprint:{name:'Blueprint',rate:50,active:true,order:1},p_upsell:{name:'Upsell',rate:100,active:true,order:2}};
+ fbPut('products',DB.products);
+}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},2200);}
+function fmt$(n){return '$'+(+n||0).toLocaleString();}
+function todayStr(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function addDays(dateStr,n){var d=new Date(dateStr+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+function niceDate(s){if(!s)return'';var d=new Date(s+'T12:00:00');return (d.getMonth()+1)+'/'+d.getDate()+'/'+String(d.getFullYear()).slice(2);}
+
+var DISP_LABEL={scheduled:'Scheduled',showed_closed:'Closed',showed_noclose:'Showed — no close',noshow:'No-show',
+ no_answer:'No answer',voicemail:'Voicemail',live_message:'Live message',bad_number:'Bad number',
+ not_interested:'Not interested',nurture:'Nurture',booked:'Booked',connected:'Connected (triage)',none:'No outcome'};
+var CONNECT_DISPS={connected:1,not_interested:1,nurture:1,booked:1};
+
+// ─── Tabs ───
+function showTab(t){
+ document.querySelectorAll('.tab').forEach(function(el){el.classList.toggle('active',el.dataset.t===t);});
+ document.querySelectorAll('.panel').forEach(function(el){el.classList.remove('active');});
+ document.getElementById('p-'+t).classList.add('active');
+ if(t==='dash')renderDash();
+ if(t==='nurture')renderNurture();
+ if(t==='billing')renderBillingInit();
+ if(t==='settings')renderSettings();
+ if(t==='log')initLogForm();
+}
+
+// ─── Log Call ───
+var lc={dir:'in',inOut:null,outOut:null};
+function initLogForm(){
+ if(!document.getElementById('lcDate').value)document.getElementById('lcDate').value=todayStr();
+ fillProdSelect();fillNameList();
+}
+function setDir(d){lc.dir=d;
+ document.querySelectorAll('#dirPills .pill').forEach(function(p){p.classList.toggle('on',p.dataset.d===d);});
+ document.getElementById('lcInbound').style.display=d==='in'?'':'none';
+ document.getElementById('lcOutbound').style.display=d==='out'?'':'none';
+}
+function setInOut(o){lc.inOut=o;
+ document.querySelectorAll('#inOutPills .pill').forEach(function(p){
+  p.classList.remove('on','g','r','a');
+  if(p.dataset.o===o){p.classList.add('on');p.classList.add(o==='showed_closed'?'g':o==='noshow'?'r':'a');}
+ });
+ document.getElementById('lcProdWrap').style.display=o==='showed_closed'?'':'none';
+ if(o==='showed_closed')prodChanged();
+}
+function setOutOut(o){lc.outOut=o;
+ document.querySelectorAll('#outOutPills .pill').forEach(function(p){
+  p.classList.remove('on','g','r','a');
+  if(p.dataset.o===o){p.classList.add('on');p.classList.add(o==='booked'?'g':o==='nurture'?'a':'');}
+ });
+ var w=document.getElementById('lcDueWrap');w.style.display=o==='nurture'?'':'none';
+ if(o==='nurture')document.getElementById('lcDue').value=addDays(document.getElementById('lcDate').value||todayStr(),+DB.settings.nurtureDays||14);
+}
+function activeProducts(){return Object.keys(DB.products).map(function(k){var p=DB.products[k];p._id=k;return p;}).filter(function(p){return p.active;}).sort(function(a,b){return (a.order||9)-(b.order||9);});}
+function fillProdSelect(){
+ var s=document.getElementById('lcProd');s.innerHTML='';
+ activeProducts().forEach(function(p){var o=document.createElement('option');o.value=p._id;o.textContent=p.name+' — '+fmt$(p.rate);s.appendChild(o);});
+}
+function prodChanged(){var p=DB.products[document.getElementById('lcProd').value];if(p)document.getElementById('lcAmt').value=p.rate;}
+function fillNameList(){
+ var dl=document.getElementById('nameList');dl.innerHTML='';
+ var names={};Object.values(DB.calls).forEach(function(c){names[c.n]=1;});
+ Object.keys(names).sort().forEach(function(n){var o=document.createElement('option');o.value=n;dl.appendChild(o);});
+}
+function saveLogCall(){
+ var name=document.getElementById('lcName').value.trim();
+ var date=document.getElementById('lcDate').value;
+ if(!name)return toast('Enter a name');
+ if(!date)return toast('Pick a date');
+ var call={n:name,d:date,notes:document.getElementById('lcNotes').value.trim(),created:Date.now()};
+ if(lc.dir==='in'){
+  if(!lc.inOut)return toast('Pick an outcome');
+  call.dir='in';call.disp=lc.inOut;
+  if(lc.inOut==='showed_closed'){
+   var pid=document.getElementById('lcProd').value;
+   call.prod=DB.products[pid]?DB.products[pid].name:'';
+   call.amt=+document.getElementById('lcAmt').value||0;
+  }
+ }else{
+  if(!lc.outOut)return toast('Pick a disposition');
+  call.dir='out';call.disp=lc.outOut;
+  if(lc.outOut==='nurture'){call.due=document.getElementById('lcDue').value||addDays(date,14);}
+ }
+ var id='c_'+uid();DB.calls[id]=call;fbPut('calls/'+id,call);
+ // logging an outcome for someone completes their open nurture items
+ if(lc.dir==='out'&&lc.outOut!=='nurture')completeNurturesFor(name,id);
+ if(lc.dir==='in')completeNurturesFor(name,id);
+ document.getElementById('lcName').value='';document.getElementById('lcNotes').value='';
+ document.getElementById('lcAmt').value='';
+ lc.inOut=null;lc.outOut=null;
+ document.querySelectorAll('#inOutPills .pill,#outOutPills .pill').forEach(function(p){p.classList.remove('on','g','r','a');});
+ document.getElementById('lcProdWrap').style.display='none';document.getElementById('lcDueWrap').style.display='none';
+ toast('Call saved');updateNurtureBadge();fillNameList();
+}
+function completeNurturesFor(name,byCallId){
+ var key=name.toLowerCase();
+ Object.keys(DB.calls).forEach(function(k){
+  var c=DB.calls[k];
+  if(c.disp==='nurture'&&!c.done&&c.n.toLowerCase()===key&&k!==byCallId){c.done=1;fbPut('calls/'+k+'/done',1);}
+ });
+}
+
+// ─── Import (paste parser) ───
+var parsed=[];
+function parsePaste(){
+ var raw=document.getElementById('impText').value;
+ var baseDate=document.getElementById('impDate').value||todayStr();
+ if(!raw.trim())return toast('Paste something first');
+ // Normalize: tabs → newlines, so table-copies and line-copies parse the same
+ var lines=raw.replace(/\t/g,'\n').split(/\r?\n/).map(function(l){return l.trim();}).filter(Boolean);
+ var OUTCOME_MAP={'left voicemail':'voicemail','voicemail':'voicemail','connected':'connected','no answer':'no_answer','busy':'no_answer',
+  'left live message':'live_message','live message':'live_message','wrong number':'bad_number','bad number':'bad_number',
+  'connected – nurture':'nurture','connected - nurture':'nurture','nurture':'nurture',
+  'connected – booked':'booked','connected - booked':'booked','booked':'booked','booked meeting':'booked',
+  'connected – not interested':'not_interested','connected - not interested':'not_interested','not interested':'not_interested','--':'none','—':'none'};
+ var SKIP=/^(call title|activity date|activity assigned|call outcome|sm$|steve maxim)/i;
+ parsed=[];var cur=null;
+ lines.forEach(function(line){
+  var m=line.match(/^call with (.+)$/i);
+  if(m){if(cur)parsed.push(cur);cur={name:m[1].trim(),time:'',date:baseDate,disp:'none',trunc:false};
+   if(/(\.\.\.|…)$/.test(cur.name)){cur.trunc=true;cur.name=cur.name.replace(/(\.\.\.|…)$/,'').trim();}
+   return;}
+  if(!cur)return;
+  if(SKIP.test(line))return;
+  var dm=line.match(/^(today|yesterday|[a-z]+ \d{1,2}(?:, \d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4})? ?at (\d{1,2}:\d{2}) ?(am|pm)/i);
+  if(dm){
+   cur.time=dm[2]+' '+dm[3].toUpperCase();
+   var dword=(dm[1]||'today').toLowerCase();
+   if(dword==='today')cur.date=baseDate;
+   else if(dword==='yesterday')cur.date=addDays(baseDate,-1);
+   else{var pd=new Date(dm[1]+(/\d{4}/.test(dm[1])?'':', '+new Date().getFullYear()));if(!isNaN(pd))cur.date=pd.toISOString().slice(0,10);}
+   return;}
+  var key=line.toLowerCase().replace(/\s+/g,' ');
+  if(OUTCOME_MAP[key]!==undefined){cur.disp=OUTCOME_MAP[key];return;}
+ });
+ if(cur)parsed.push(cur);
+ if(!parsed.length)return toast('No calls recognized — check the paste');
+ // dedupe check
+ var existing={};Object.values(DB.calls).forEach(function(c){if(c.dir==='out')existing[(c.n+'|'+c.d+'|'+(c.t||'')).toLowerCase()]=1;});
+ parsed.forEach(function(p){p.dup=!!existing[(p.name+'|'+p.date+'|'+p.time).toLowerCase()];p.checked=!p.dup;});
+ renderImportPreview();
+}
+function renderImportPreview(){
+ document.getElementById('impPreviewCard').style.display='';
+ document.getElementById('impCount').textContent=parsed.length+' calls found';
+ var truncs=parsed.filter(function(p){return p.trunc;}).length;
+ var dups=parsed.filter(function(p){return p.dup;}).length;
+ var conns=parsed.filter(function(p){return p.disp==='connected';}).length;
+ var w='';
+ if(truncs)w+='<div class="warn">⚠️ '+truncs+' name(s) were cut off in HubSpot — fix them below before importing.</div>';
+ if(dups)w+='<div class="warn">↩️ '+dups+' duplicate(s) already imported — unchecked automatically.</div>';
+ if(conns)w+='<div class="warn">☎️ '+conns+' plain "Connected" call(s) — set what happened (nurture / booked / not interested) or import as-is and triage later.</div>';
+ document.getElementById('impWarn').innerHTML=w;
+ var h='<tr><th></th><th>Name</th><th>Date</th><th>Time</th><th>Outcome</th></tr>';
+ parsed.forEach(function(p,i){
+  var opts=['connected','no_answer','voicemail','live_message','bad_number','not_interested','nurture','booked','none'].map(function(o){
+   return '<option value="'+o+'"'+(p.disp===o?' selected':'')+'>'+DISP_LABEL[o]+'</option>';}).join('');
+  h+='<tr'+(p.dup?' style="opacity:.5"':'')+'>'
+   +'<td><input type="checkbox" '+(p.checked?'checked':'')+' onchange="parsed['+i+'].checked=this.checked"></td>'
+   +'<td><input type="text" value="'+p.name.replace(/"/g,'&quot;')+'" style="min-width:130px;padding:5px 8px;font-size:12px'+(p.trunc?';border-color:var(--amb);background:var(--atint)':'')+'" onchange="parsed['+i+'].name=this.value"></td>'
+   +'<td style="white-space:nowrap">'+niceDate(p.date)+'</td><td style="white-space:nowrap">'+p.time+'</td>'
+   +'<td><select style="padding:5px 8px;font-size:12px" onchange="parsed['+i+'].disp=this.value">'+opts+'</select></td>'
+   +(p.dup?'<td><span class="chip m">dup</span></td>':'<td></td>')+'</tr>';
+ });
+ document.getElementById('impTbl').innerHTML=h;
+}
+function commitImport(){
+ var n=0;
+ parsed.filter(function(p){return p.checked;}).forEach(function(p){
+  var call={n:p.name.trim(),dir:'out',d:p.date,t:p.time,disp:p.disp,created:Date.now()};
+  if(p.disp==='nurture')call.due=addDays(p.date,+DB.settings.nurtureDays||14);
+  var id='c_'+uid()+n;DB.calls[id]=call;fbPut('calls/'+id,call);n++;
+ });
+ toast(n+' calls imported');
+ parsed=[];document.getElementById('impPreviewCard').style.display='none';document.getElementById('impText').value='';
+ updateNurtureBadge();
+}
+
+// ─── Dashboard ───
+var period='tm';
+document.getElementById('periodSeg').addEventListener('click',function(e){
+ var b=e.target.closest('button');if(!b)return;period=b.dataset.p;
+ document.querySelectorAll('#periodSeg button').forEach(function(x){x.classList.toggle('on',x===b);});
+ renderDash();
+});
+function periodRange(){
+ var now=new Date(),y=now.getFullYear(),m=now.getMonth();
+ function iso(d){return d.toISOString().slice(0,10);}
+ if(period==='tm')return[iso(new Date(y,m,1)),iso(new Date(y,m+1,0)),'This month'];
+ if(period==='lm')return[iso(new Date(y,m-1,1)),iso(new Date(y,m,0)),'Last month'];
+ if(period==='q'){var qs=Math.floor(m/3)*3;return[iso(new Date(y,qs,1)),iso(new Date(y,qs+3,0)),'Q'+(Math.floor(m/3)+1)];}
+ if(period==='y')return[y+'-01-01',y+'-12-31',String(y)];
+ return['0000-01-01','9999-12-31','All time'];
+}
+function callsIn(a,b){return Object.keys(DB.calls).map(function(k){var c=DB.calls[k];c._id=k;return c;}).filter(function(c){return c.d>=a&&c.d<=b;});}
+function stat(n,l,cls){return '<div class="stat-card '+(cls||'')+'"><div class="num">'+n+'</div><div class="lbl">'+l+'</div></div>';}
+function renderDash(){
+ var r=periodRange();var cs=callsIn(r[0],r[1]);
+ document.getElementById('dashPeriodLbl1').textContent=r[2];
+ document.getElementById('dashPeriodLbl2').textContent=r[2];
+ var out=cs.filter(function(c){return c.dir==='out';});
+ var dials=out.length;
+ var connects=out.filter(function(c){return CONNECT_DISPS[c.disp];}).length;
+ var booked=out.filter(function(c){return c.disp==='booked';}).length;
+ var nurtActive=Object.values(DB.calls).filter(function(c){return c.disp==='nurture'&&!c.done;}).length;
+ document.getElementById('outStats').innerHTML=
+  stat(dials,'Dials')+stat(connects,'Connects','grn')+stat(dials?Math.round(connects/dials*100)+'%':'—','Connect %','grn')
+  +stat(booked,'Booked','amb')+stat(nurtActive,'In Nurture','amb');
+ document.getElementById('outNote').textContent=dials?'':'No outbound calls in this period yet — use Import to paste from HubSpot.';
+ var inn=cs.filter(function(c){return c.dir==='in';});
+ var sched=inn.length;
+ var live=inn.filter(function(c){return c.disp==='showed_closed'||c.disp==='showed_noclose';}).length;
+ var closes=inn.filter(function(c){return c.disp==='showed_closed';}).length;
+ var showPct=(live+inn.filter(function(c){return c.disp==='noshow';}).length)?Math.round(live/(live+inn.filter(function(c){return c.disp==='noshow';}).length)*100)+'%':'—';
+ document.getElementById('inStats').innerHTML=
+  stat(sched,'Sessions')+stat(live,'Live','grn')+stat(showPct,'Show %','grn')
+  +stat(closes,'Closes','amb')+stat(live?Math.round(closes/live*100)+'%':'—','Close Rate','amb');
+ var earned=inn.filter(function(c){return c.disp==='showed_closed';}).reduce(function(s,c){return s+(+c.amt||0);},0);
+ var owed=0,paid=0;
+ Object.values(DB.invoices).forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;});
+ var unbilled=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
+ document.getElementById('moneyStats').innerHTML=
+  stat(fmt$(earned),'Earned ('+r[2]+')','grn')+stat(fmt$(unbilled),'Unbilled','amb')+stat(fmt$(owed),'Invoiced, Unpaid','red')+stat(fmt$(paid),'Paid (all time)','grn');
+ // recent
+ var recent=Object.keys(DB.calls).map(function(k){var c=DB.calls[k];c._id=k;return c;})
+  .sort(function(a,b){return (b.d+(b.t||'')).localeCompare(a.d+(a.t||''))||b.created-a.created;}).slice(0,12);
+ var h='<tr><th>Date</th><th>Name</th><th>Dir</th><th>Outcome</th><th>$</th></tr>';
+ recent.forEach(function(c){
+  var cls=c.disp==='showed_closed'||c.disp==='booked'?'g':c.disp==='noshow'||c.disp==='not_interested'?'r':c.disp==='nurture'?'a':'m';
+  h+='<tr><td>'+niceDate(c.d)+'</td><td>'+c.n+'</td><td>'+(c.dir==='in'?'📥':'📤')+'</td><td><span class="chip '+cls+'">'+DISP_LABEL[c.disp]+'</span></td><td>'+(c.amt?fmt$(c.amt):'')+'</td></tr>';
+ });
+ document.getElementById('recentTbl').innerHTML=recent.length?h:'<tr><td class="empty">No calls yet</td></tr>';
+ updateNurtureBadge();
+}
+
+// ─── Nurture ───
+function updateNurtureBadge(){
+ var t=todayStr();
+ var due=Object.values(DB.calls).filter(function(c){return c.disp==='nurture'&&!c.done&&c.due&&c.due<=t;}).length;
+ var b=document.getElementById('nurtureBadge');
+ b.style.display=due?'':'none';b.textContent=due;
+}
+function nurtureItem(c){
+ return '<div class="nitem"><div><div class="who">'+c.n+'</div><div class="meta">Last call '+niceDate(c.d)+' · follow up '+niceDate(c.due)+(c.notes?' · '+c.notes:'')+'</div></div>'
+ +'<div class="btnrow" style="margin:0">'
+ +'<button class="btn sm" onclick="nLog(\''+c._id+'\')">Log call</button>'
+ +'<button class="btn sm amb" onclick="nSnooze(\''+c._id+'\')">+2 wks</button>'
+ +'<button class="btn sm ghost" onclick="nDone(\''+c._id+'\')">Done</button>'
+ +'</div></div>';
+}
+function renderNurture(){
+ var t=todayStr();
+ var items=Object.keys(DB.calls).map(function(k){var c=DB.calls[k];c._id=k;return c;})
+  .filter(function(c){return c.disp==='nurture'&&!c.done;})
+  .sort(function(a,b){return (a.due||'').localeCompare(b.due||'');});
+ var od=items.filter(function(c){return c.due<t;}),td=items.filter(function(c){return c.due===t;}),up=items.filter(function(c){return c.due>t;});
+ document.getElementById('nOverdue').innerHTML=od.length?od.map(nurtureItem).join(''):'<div class="empty">Nothing overdue 🎉</div>';
+ document.getElementById('nToday').innerHTML=td.length?td.map(nurtureItem).join(''):'<div class="empty">Nothing due today</div>';
+ document.getElementById('nUpcoming').innerHTML=up.length?up.map(nurtureItem).join(''):'<div class="empty">No upcoming follow-ups</div>';
+ var tri=Object.keys(DB.calls).map(function(k){var c=DB.calls[k];c._id=k;return c;})
+  .filter(function(c){return c.disp==='connected';})
+  .sort(function(a,b){return b.d.localeCompare(a.d);});
+ document.getElementById('nTriage').innerHTML=tri.length?tri.map(function(c){
+  return '<div class="nitem"><div><div class="who">'+c.n+'</div><div class="meta">'+niceDate(c.d)+' '+(c.t||'')+'</div></div>'
+  +'<div class="btnrow" style="margin:0">'
+  +'<button class="btn sm amb" onclick="triage(\''+c._id+'\',\'nurture\')">🌱 Nurture</button>'
+  +'<button class="btn sm grn" onclick="triage(\''+c._id+'\',\'booked\')">🗓️ Booked</button>'
+  +'<button class="btn sm red" onclick="triage(\''+c._id+'\',\'not_interested\')">Not interested</button>'
+  +'</div></div>';
+ }).join(''):'<div class="empty">Nothing to triage</div>';
+}
+function triage(id,disp){
+ var c=DB.calls[id];c.disp=disp;
+ if(disp==='nurture'){c.due=addDays(todayStr(),+DB.settings.nurtureDays||14);}
+ fbPut('calls/'+id,c);renderNurture();updateNurtureBadge();toast('Updated');
+}
+function nSnooze(id){
+ var c=DB.calls[id];c.due=addDays(todayStr(),+DB.settings.nurtureDays||14);
+ fbPut('calls/'+id,c);renderNurture();toast('Snoozed to '+niceDate(c.due));
+}
+function nDone(id){DB.calls[id].done=1;fbPut('calls/'+id+'/done',1);renderNurture();updateNurtureBadge();}
+function nLog(id){
+ var c=DB.calls[id];
+ showTab('log');setDir('out');
+ document.getElementById('lcName').value=c.n;document.getElementById('lcDate').value=todayStr();
+}
+
+// ─── Billing ───
+function monthName(ym){var p=ym.split('-');return ['','January','February','March','April','May','June','July','August','September','October','November','December'][+p[1]]+' '+p[0];}
+function renderBillingInit(){
+ var sel=document.getElementById('billMonth');
+ var months={};
+ Object.values(DB.calls).forEach(function(c){if(c.dir==='in'&&c.disp==='showed_closed')months[c.d.slice(0,7)]=1;});
+ months[todayStr().slice(0,7)]=1;
+ var keys=Object.keys(months).sort().reverse();
+ var cur=sel.value||todayStr().slice(0,7);
+ sel.innerHTML=keys.map(function(m){return '<option value="'+m+'"'+(m===cur?' selected':'')+'>'+monthName(m)+'</option>';}).join('');
+ renderBilling();
+}
+function unbilledFor(ym){
+ return Object.keys(DB.calls).map(function(k){var c=DB.calls[k];c._id=k;return c;})
+  .filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv&&c.d.slice(0,7)===ym;})
+  .sort(function(a,b){return a.d.localeCompare(b.d);});
+}
+function renderBilling(){
+ var ym=document.getElementById('billMonth').value;
+ var rows=unbilledFor(ym);
+ var h='<tr><th>Date</th><th>Client</th><th>Product</th><th style="text-align:right">Amount</th></tr>';
+ var tot=0;
+ rows.forEach(function(c){tot+=+c.amt;h+='<tr><td>'+niceDate(c.d)+'</td><td>'+c.n+'</td><td>'+(c.prod||'')+'</td><td style="text-align:right">'+fmt$(c.amt)+'</td></tr>';});
+ if(rows.length)h+='<tr><td colspan="3" style="font-weight:700">Total</td><td style="text-align:right;font-weight:700">'+fmt$(tot)+'</td></tr>';
+ document.getElementById('unbilledTbl').innerHTML=rows.length?h:'<tr><td class="empty">No unbilled closes for '+monthName(ym)+'</td></tr>';
+ document.getElementById('genInvBtn').disabled=!rows.length;
+ // invoices table
+ var invs=Object.keys(DB.invoices).map(function(k){var v=DB.invoices[k];v._id=k;return v;}).sort(function(a,b){return b.no.localeCompare(a.no);});
+ var ih='<tr><th>Invoice</th><th>Month</th><th style="text-align:right">Total</th><th>Status</th><th></th></tr>';
+ invs.forEach(function(v){
+  var cls=v.status==='paid'?'g':v.status==='sent'?'a':'m';
+  ih+='<tr><td>'+v.no+'</td><td>'+monthName(v.month)+'</td><td style="text-align:right">'+fmt$(v.total)+'</td>'
+   +'<td><span class="chip '+cls+'">'+v.status+'</span>'+(v.paidDate?' <span class="muted">'+niceDate(v.paidDate)+'</span>':'')+'</td>'
+   +'<td style="white-space:nowrap"><button class="btn sm ghost" onclick="viewInvoice(\''+v._id+'\')">View</button> '
+   +(v.status==='draft'?'<button class="btn sm amb" onclick="markSent(\''+v._id+'\')">Sent →</button> ':'')
+   +(v.status!=='paid'?'<button class="btn sm grn" onclick="markPaid(\''+v._id+'\')">Paid ✓</button> ':'')
+   +(v.status!=='paid'?'<button class="btn sm red" onclick="delInvoice(\''+v._id+'\')">✕</button>':'')
+   +'</td></tr>';
+ });
+ document.getElementById('invTbl').innerHTML=invs.length?ih:'<tr><td class="empty">No invoices yet</td></tr>';
+ // balance stats
+ var owed=0,paid=0,draft=0;
+ invs.forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;if(v.status==='draft')draft+=v.total;});
+ var unbilledAll=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
+ document.getElementById('billStats').innerHTML=
+  stat(fmt$(unbilledAll),'Unbilled','amb')+stat(fmt$(owed),'Outstanding','red')+stat(fmt$(paid),'Collected','grn');
+}
+function generateInvoice(){
+ var ym=document.getElementById('billMonth').value;
+ var rows=unbilledFor(ym);
+ if(!rows.length)return;
+ var seq=Object.values(DB.invoices).filter(function(v){return v.month===ym;}).length+1;
+ var no='OZ-'+ym.replace('-','')+'-'+String(seq).padStart(2,'0');
+ var lines=rows.map(function(c){return{callId:c._id,date:c.d,name:c.n,prod:c.prod||'',amt:+c.amt};});
+ var total=lines.reduce(function(s,l){return s+l.amt;},0);
+ var inv={no:no,month:ym,lines:lines,total:total,status:'draft',created:Date.now()};
+ var id='i_'+uid();DB.invoices[id]=inv;fbPut('invoices/'+id,inv);
+ rows.forEach(function(c){c.inv=id;fbPut('calls/'+c._id+'/inv',id);});
+ renderBilling();viewInvoice(id);toast('Invoice '+no+' created');
+}
+function viewInvoice(id){
+ var v=DB.invoices[id];var s=DB.settings;
+ var h='<div class="inv-head"><div><h1>INVOICE</h1><div style="font-size:13px;color:#666">Closer services — '+monthName(v.month)+'</div></div>'
+ +'<div class="no"><b>'+v.no+'</b><br>Date: '+niceDate(todayStr())+'<br>Status: '+v.status.toUpperCase()+'</div></div>'
+ +'<div class="inv-parties"><div><h4>From</h4><div>'+(s.invFrom||'')+'</div></div><div><h4>Bill To</h4><div>'+(s.invTo||'')+'</div></div></div>'
+ +'<table><tr><th>Date</th><th>Client</th><th>Item</th><th style="text-align:right">Amount</th></tr>';
+ v.lines.forEach(function(l){h+='<tr><td>'+niceDate(l.date)+'</td><td>'+l.name+'</td><td>'+l.prod+'</td><td style="text-align:right">'+fmt$(l.amt)+'</td></tr>';});
+ h+='</table><div class="inv-total">Total Due: '+fmt$(v.total)+'</div>'
+ +'<div class="inv-foot">'+(s.invTerms||'')+'</div>';
+ document.getElementById('invBody').innerHTML=h;
+ document.getElementById('invoiceView').classList.add('show');
+}
+function closeInvoice(){document.getElementById('invoiceView').classList.remove('show');renderBilling();}
+function markSent(id){
+ DB.invoices[id].status='sent';fbPut('invoices/'+id+'/status','sent');renderBilling();
+}
+function markPaid(id){
+ var v=DB.invoices[id];v.status='paid';v.paidDate=todayStr();
+ fbPut('invoices/'+id,v);renderBilling();toast(v.no+' marked paid 💰');
+}
+function delInvoice(id){
+ if(!confirm('Delete this invoice? The closes go back to Unbilled.'))return;
+ var v=DB.invoices[id];
+ v.lines.forEach(function(l){if(DB.calls[l.callId]){delete DB.calls[l.callId].inv;fbDel('calls/'+l.callId+'/inv');}});
+ delete DB.invoices[id];fbDel('invoices/'+id);renderBilling();
+}
+
+// ─── Settings ───
+function renderSettings(){
+ var s=DB.settings;
+ document.getElementById('setNurtureDays').value=s.nurtureDays||14;
+ document.getElementById('setInvFrom').value=s.invFrom||'';
+ document.getElementById('setInvTo').value=s.invTo||'';
+ document.getElementById('setInvTerms').value=s.invTerms||'';
+ var h='<tr><th>Product</th><th>Rate</th><th>Active</th></tr>';
+ Object.keys(DB.products).sort(function(a,b){return (DB.products[a].order||9)-(DB.products[b].order||9);}).forEach(function(k){
+  var p=DB.products[k];
+  h+='<tr><td><input type="text" value="'+p.name+'" style="padding:5px 8px;font-size:12px" onchange="updProd(\''+k+'\',\'name\',this.value)"></td>'
+  +'<td><input type="number" value="'+p.rate+'" style="padding:5px 8px;font-size:12px;max-width:90px" onchange="updProd(\''+k+'\',\'rate\',+this.value)"></td>'
+  +'<td><input type="checkbox" '+(p.active?'checked':'')+' onchange="updProd(\''+k+'\',\'active\',this.checked)"></td></tr>';
+ });
+ document.getElementById('prodTbl').innerHTML=h;
+ var nCalls=Object.keys(DB.calls).length;
+ document.getElementById('dataInfo').textContent=nCalls+' calls · '+Object.keys(DB.invoices).length+' invoices stored'+(s.seeded?' · REP1 history imported ✓':'');
+ document.getElementById('seedBtn').disabled=!!s.seeded;
+}
+function updProd(k,f,v){DB.products[k][f]=v;fbPut('products/'+k,DB.products[k]);fillProdSelect();}
+function addProduct(){
+ var name=prompt('Product name?');if(!name)return;
+ var rate=+prompt('Your commission per close ($)?','0')||0;
+ var id='p_'+uid();
+ DB.products[id]={name:name,rate:rate,active:true,order:Object.keys(DB.products).length+1};
+ fbPut('products/'+id,DB.products[id]);renderSettings();
+}
+function saveSettings(){
+ DB.settings.nurtureDays=+document.getElementById('setNurtureDays').value||14;
+ DB.settings.invFrom=document.getElementById('setInvFrom').value;
+ DB.settings.invTo=document.getElementById('setInvTo').value;
+ DB.settings.invTerms=document.getElementById('setInvTerms').value;
+ fbPut('settings',DB.settings);toast('Settings saved');
+}
+function exportJSON(){
+ var blob=new Blob([JSON.stringify(DB,null,1)],{type:'application/json'});
+ var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='oztracker-backup-'+todayStr()+'.json';a.click();
+}
+
+// ─── Seed: REP1 history ───
+var SEED=[
+ ['2026-08-12','Andy Lin','showed_closed','Blueprint',50],
+ ['2026-08-13','James May','showed_closed','Blueprint',50],
+ ['2026-08-14','Michael Patton','showed_closed','Blueprint',50],
+ ['2026-08-18','West Hunter','showed_noclose','',0],
+ ['2026-08-18','Carolyn Triue','showed_noclose','',0],
+ ['2026-08-18','John Schriner','showed_closed','Blueprint',50],
+ ['2026-08-19','Jeff Megy','showed_noclose','',0],
+ ['2026-08-20','Matt Davies','showed_closed','Blueprint',50],
+ ['2026-08-20','Chris Christy','showed_closed','Blueprint',50],
+ ['2026-08-20','Mark Wayne Booker','showed_noclose','',0],
+ ['2026-08-21','Vadim Tulchinsky','showed_noclose','',0],
+ ['2026-08-21','Ash Vemullapalli','showed_closed','Blueprint',50],
+ ['2026-08-25','Mark Gottschlich','showed_noclose','',0],
+ ['2026-08-26','Matt Davies','showed_closed','Upsell',100],
+ ['2026-08-26','Chris Christy','showed_closed','Upsell',100],
+ ['2026-08-27','Steven Cohen','showed_noclose','',0],
+ ['2026-09-01','James May','showed_closed','Upsell',100],
+ ['2026-09-02','Dennis Eckel','showed_noclose','',0]
+];
+function importSeed(){
+ if(DB.settings.seeded)return toast('Already imported');
+ SEED.forEach(function(r,i){
+  var call={n:r[1],dir:'in',d:r[0],disp:r[2],created:Date.now()+i};
+  if(r[4]){call.prod=r[3];call.amt=r[4];}
+  var id='c_seed'+i;DB.calls[id]=call;fbPut('calls/'+id,call);
+ });
+ DB.settings.seeded=true;fbPut('settings/seeded',true);
+ toast(SEED.length+' historical calls imported');renderSettings();
+}
+
+// ─── Init ───
+document.getElementById('lcDate').value=todayStr();
+document.getElementById('impDate').value=todayStr();
+loadAll().then(function(){
+ if(!DB.settings.seeded&&!Object.keys(DB.calls).length){importSeed();}
+ renderDash();initLogForm();updateNurtureBadge();
+});
+</script>
+</body>
+</html>
