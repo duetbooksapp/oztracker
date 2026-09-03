@@ -280,8 +280,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.1.0';
+var APP_VERSION='1.1.1';
 var CHANGELOG=[
+ ['1.1.1','2026-09-02','Much more forgiving screenshot reading: handles OCR misreads (garbled "Call with", "Today", times, cut-short outcome words). Clearer message when a snapshot can\'t be read.'],
  ['1.1.0','2026-09-02','Screenshot import: paste or drop HubSpot snapshots — OCR reads the calls right off the image. Version tracking added.'],
  ['1.0.0','2026-09-02','First release: inbound/outbound call log, HubSpot text paste, nurture queue, funnel dashboard, invoicing with paid tracking, REP1 history import.']
 ];
@@ -475,7 +476,7 @@ function handleImages(list){
    var raw=texts.join('\n').trim();
    document.getElementById('impText').value=raw;
    parsePaste();
-   if(!parsed.length)st.textContent='Couldn’t read any calls from that image — try a sharper or more zoomed-in screenshot.';
+   if(!parsed.length)st.textContent='Read the image but couldn’t recognize call rows. What it saw is in the text box below — fix any garbled lines and hit Preview Import, or try a sharper screenshot.';
   });
  }).catch(function(){st.textContent='Couldn’t load the OCR reader — check your connection and try again.';});
 }
@@ -497,10 +498,14 @@ document.addEventListener('paste',function(e){
 })();
 
 // ─── Import (parser) ───
+// Stems, not full words — OCR often drops trailing letters ("voicemai", "connecte")
 var OUTCOME_KEYS=[
- ['left voicemail','voicemail'],['voicemail','voicemail'],['no answer','no_answer'],['busy','no_answer'],
- ['live message','live_message'],['wrong number','bad_number'],['bad number','bad_number'],
- ['not interested','not_interested'],['nurture','nurture'],['booked','booked'],['connected','connected']
+ ['voicemai','voicemail'],['voicema','voicemail'],['voicem','voicemail'],
+ ['no answ','no_answer'],['no ansv','no_answer'],['busy','no_answer'],
+ ['live mess','live_message'],['live mes','live_message'],
+ ['wrong numb','bad_number'],['bad numb','bad_number'],
+ ['not interest','not_interested'],['not intere','not_interested'],
+ ['nurtur','nurture'],['booked','booked'],['connect','connected']
 ];
 function findOutcome(s){
  s=(s||'').toLowerCase().replace(/\s+/g,' ');
@@ -513,17 +518,31 @@ function findOutcome(s){
  return best||'none';
 }
 // Whole row on one line (OCR output): "Call with Adam Walter Today at 5:58 PM EDT SM Steve Maxim... Left voicemail"
+// Fuzzy: tolerates OCR misreads like "Cali with", "Teday", "5;58", missing "at".
+var DT_RE=/(today|t[eo0]day|yesterday|yesterd[ao]y|[a-z]{3,9}\.? ?\d{1,2}(?:, ?\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4})?\s*(?:at|al|ot|af|a1)?\s+(\d{1,2})\s*[:;.]\s*(\d{2})\s*([ap])\.?\s*\.?m/i;
 function parseRowLine(line,baseDate){
- var m=line.match(/call with (.+)/i);if(!m)return null;
- var rest=m[1];
- var t=rest.match(/(today|yesterday|[a-z]{3,9}\.? ?\d{1,2}(?:, ?\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4})? ?at (\d{1,2})[:.](\d{2}) ?([ap])\.?m\.?/i);
+ var rest=null;
+ var m=line.match(/[co]a?[l1i|]{1,2}\s*w\s*[il1|!]?\s*t?\s*h\s+(.+)/i);
+ if(m){rest=m[1];}
+ else{
+  // No readable "Call with" — still accept a line that has a time AND an outcome word
+  if(!DT_RE.test(line))return null;
+  var probe=line.match(DT_RE);
+  if(findOutcome(line.slice(probe.index+probe[0].length))==='none'&&!/--|—/.test(line))return null;
+  rest=line.replace(/^[>»\s•·¢©®™|]+/,'');
+ }
+ var t=rest.match(DT_RE);
  if(!t)return null;
- var name=rest.slice(0,t.index).trim().replace(/[>|©@()\[\]~•·«»]+$/,'').trim();
+ var name=rest.slice(0,t.index).trim()
+  .replace(/[>|©@()\[\]~•·«»®™;:,]+$/,'')
+  .replace(/\b(t[eo0]?day|yesterd[ao]?y|at|al|ot)\s*$/i,'')
+  .trim();
+ if(!name)return null;
  var rec={name:name,time:(+t[2])+':'+t[3]+' '+t[4].toUpperCase()+'M',date:baseDate,disp:'none',trunc:false};
  if(/(\.{2,}|…)$/.test(rec.name)){rec.trunc=true;rec.name=rec.name.replace(/(\.{2,}|…)$/,'').trim();}
  var dword=(t[1]||'today').toLowerCase();
- if(dword==='today')rec.date=baseDate;
- else if(dword==='yesterday')rec.date=addDays(baseDate,-1);
+ if(/^t[eo0]?day$/.test(dword)||dword==='today')rec.date=baseDate;
+ else if(/^yesterd/.test(dword))rec.date=addDays(baseDate,-1);
  else{var pd=new Date(t[1]+(/\d{4}/.test(t[1])?'':', '+new Date().getFullYear()));if(!isNaN(pd))rec.date=pd.toISOString().slice(0,10);}
  rec.disp=findOutcome(rest.slice(t.index+t[0].length));
  return rec;
