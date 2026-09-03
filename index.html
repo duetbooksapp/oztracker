@@ -35,6 +35,9 @@ html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI
 
 .panel{display:none;padding:16px;padding-bottom:80px;max-width:860px;margin:0 auto}
 .panel.active{display:block}
+#p-dash.active{max-width:1180px}
+.dash2col{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+@media(max-width:760px){.dash2col{grid-template-columns:1fr}}
 
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);padding:16px;margin-bottom:12px}
 .card h3{font-size:14px;margin-bottom:10px;color:var(--pri)}
@@ -181,15 +184,14 @@ tr:last-child td{border-bottom:none}
    <button class="btn sm" onclick="qiSave()">Save</button>
   </div>
  </div>
- <div class="card"><h3>Outbound <span class="rt" id="dashPeriodLbl1"></span></h3>
-  <div class="stat-grid" id="outStats"></div>
-  <div class="muted" id="outNote"></div>
- </div>
- <div class="card"><h3>Inbound Sessions <span class="rt" id="dashPeriodLbl2"></span></h3>
-  <div class="stat-grid" id="inStats"></div>
- </div>
- <div class="card"><h3>Money</h3>
-  <div class="stat-grid" id="moneyStats"></div>
+ <div class="dash2col">
+  <div class="card"><h3>Outbound <span class="rt" id="dashPeriodLbl1"></span></h3>
+   <div class="stat-grid" id="outStats"></div>
+   <div class="muted" id="outNote"></div>
+  </div>
+  <div class="card"><h3>Inbound Sessions <span class="rt" id="dashPeriodLbl2"></span></h3>
+   <div class="stat-grid" id="inStats"></div>
+  </div>
  </div>
  <div class="card"><h3>📓 Daily Journal <span class="rt"><select id="repWeek" style="width:auto;padding:4px 8px;font-size:12px"><option value="0">This week</option><option value="1">Last week</option></select> <button class="btn sm" onclick="generateWeeklyReport()">Manager's Report</button></span></h3>
   <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
@@ -361,8 +363,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.5.0';
+var APP_VERSION='1.5.1';
 var CHANGELOG=[
+ ['1.5.1','2026-09-03','Dashboard layout: Outbound and Inbound side by side on desktop (stacked on phone); Money card moved to Billing (with Earned This Month); Quick Inbound and Daily Journal stay on the front dash.'],
  ['1.5.0','2026-09-03','Inbound qualification: Quick Inbound Call card on the dashboard (name → Qualified / Not qualified → optional Closed), Qualified / Not Qual / Qual % stats in the Inbound section, Q/NQ tags in the Call Log, and a qualified line in the weekly report. "Meeting booked" imports auto-count as qualified.'],
  ['1.4.0','2026-09-03','Daily Journal on the dashboard (one note per day, tap a past note to edit) and a one-click weekly Manager\'s Report: outbound + session numbers, who closed/booked/in conversation, nurture pipeline, and your daily notes — copy as text or print/PDF.'],
  ['1.3.0','2026-09-03','Recurring billing: products flagged "Monthly (28th)" (like Monthly Base, $4,500) auto-generate a charge on the 28th of each month that flows into that month\'s invoice — never counted as a call or in call stats. Recurring products are hidden from the close/product pickers.'],
@@ -1043,13 +1046,6 @@ function renderDash(){
   stat(sched,'Sessions')+stat(live,'Live','grn')+stat(showPct,'Show %','grn')
   +stat(closes,'Closes','amb')+stat(live?Math.round(closes/live*100)+'%':'—','Close Rate','amb')
   +stat(qq,'Qualified','grn')+stat(nq,'Not Qual','red')+stat((qq+nq)?Math.round(qq/(qq+nq)*100)+'%':'—','Qual %');
- var earned=inn.filter(function(c){return c.disp==='showed_closed';}).reduce(function(s,c){return s+(+c.amt||0);},0);
- var owed=0,paid=0;
- Object.values(DB.invoices).forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;});
- var unbilled=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0)
-  +Object.values(DB.charges).filter(function(c){return !c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
- document.getElementById('moneyStats').innerHTML=
-  stat(fmt$(earned),'Earned ('+r[2]+')','grn')+stat(fmt$(unbilled),'Unbilled','amb')+stat(fmt$(owed),'Invoiced, Unpaid','red')+stat(fmt$(paid),'Paid (all time)','grn');
  updateNurtureBadge();
 }
 
@@ -1153,8 +1149,11 @@ function renderBilling(){
  invs.forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;if(v.status==='draft')draft+=v.total;});
  var unbilledAll=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0)
   +Object.values(DB.charges).filter(function(c){return !c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
+ var curYM=todayStr().slice(0,7);
+ var earnedTM=Object.values(DB.calls).filter(function(c){return c.disp==='showed_closed'&&c.d.slice(0,7)===curYM;}).reduce(function(s,c){return s+(+c.amt||0);},0)
+  +Object.values(DB.charges).filter(function(c){return c.month===curYM;}).reduce(function(s,c){return s+(+c.amt);},0);
  document.getElementById('billStats').innerHTML=
-  stat(fmt$(unbilledAll),'Unbilled','amb')+stat(fmt$(owed),'Outstanding','red')+stat(fmt$(paid),'Collected','grn');
+  stat(fmt$(earnedTM),'Earned This Month','grn')+stat(fmt$(unbilledAll),'Unbilled','amb')+stat(fmt$(owed),'Outstanding','red')+stat(fmt$(paid),'Collected','grn');
 }
 function generateInvoice(){
  var ym=document.getElementById('billMonth').value;
