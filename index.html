@@ -165,6 +165,22 @@ tr:last-child td{border-bottom:none}
  </div>
  <div class="muted" id="periodInfo" style="margin:-4px 0 10px 2px"></div>
  <div id="pendingWrap"></div>
+ <div class="card">
+  <h3>📥 Quick Inbound Call</h3>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+   <input type="text" id="qiName" placeholder="Caller name" style="flex:1;min-width:140px">
+   <div class="pillrow">
+    <div class="pill" id="qiQ" onclick="qiSetQual('q')">✅ Qualified</div>
+    <div class="pill" id="qiNQ" onclick="qiSetQual('nq')">🚫 Not qualified</div>
+   </div>
+   <div class="pillrow">
+    <div class="pill" id="qiClosed" onclick="qiSetOut('closed')">💰 Closed</div>
+    <div class="pill" id="qiNoClose" onclick="qiSetOut('noclose')">No close</div>
+   </div>
+   <select id="qiProd" style="display:none;width:auto"></select>
+   <button class="btn sm" onclick="qiSave()">Save</button>
+  </div>
+ </div>
  <div class="card"><h3>Outbound <span class="rt" id="dashPeriodLbl1"></span></h3>
   <div class="stat-grid" id="outStats"></div>
   <div class="muted" id="outNote"></div>
@@ -227,6 +243,11 @@ tr:last-child td{border-bottom:none}
     <div class="pill" data-o="showed_noclose" onclick="setInOut('showed_noclose')">💬 Showed — No close</div>
     <div class="pill" data-o="noshow" onclick="setInOut('noshow')">👻 No-show</div>
     <div class="pill" data-o="scheduled" onclick="setInOut('scheduled')">📅 Scheduled (upcoming)</div>
+   </div>
+   <label>Qualified?</label>
+   <div class="pillrow" id="lcQualPills">
+    <div class="pill" data-q="q" onclick="setLcQual('q')">✅ Qualified</div>
+    <div class="pill" data-q="nq" onclick="setLcQual('nq')">🚫 Not qualified</div>
    </div>
    <div id="lcProdWrap" style="display:none">
     <label>Product</label><select id="lcProd" onchange="prodChanged()"></select>
@@ -340,8 +361,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.4.0';
+var APP_VERSION='1.5.0';
 var CHANGELOG=[
+ ['1.5.0','2026-09-03','Inbound qualification: Quick Inbound Call card on the dashboard (name → Qualified / Not qualified → optional Closed), Qualified / Not Qual / Qual % stats in the Inbound section, Q/NQ tags in the Call Log, and a qualified line in the weekly report. "Meeting booked" imports auto-count as qualified.'],
  ['1.4.0','2026-09-03','Daily Journal on the dashboard (one note per day, tap a past note to edit) and a one-click weekly Manager\'s Report: outbound + session numbers, who closed/booked/in conversation, nurture pipeline, and your daily notes — copy as text or print/PDF.'],
  ['1.3.0','2026-09-03','Recurring billing: products flagged "Monthly (28th)" (like Monthly Base, $4,500) auto-generate a charge on the 28th of each month that flows into that month\'s invoice — never counted as a call or in call stats. Recurring products are hidden from the close/product pickers.'],
  ['1.2.1','2026-09-03','Dark mode (default on) with a ☀️/🌙 toggle in the header; choice remembered per device. Invoices stay white for printing.'],
@@ -423,7 +445,8 @@ function toggleLogForm(){
 // ─── Call Log (daily activity report) ───
 function dispChip(c){
  var cls=c.disp==='showed_closed'||c.disp==='booked'?'g':c.disp==='noshow'||c.disp==='not_interested'?'r':c.disp==='nurture'||c.disp==='scheduled'||c.disp==='connected'?'a':'m';
- return '<span class="chip '+cls+'">'+DISP_LABEL[c.disp]+'</span>';
+ var q=c.qual==='q'?' <span class="chip g">Q</span>':c.qual==='nq'?' <span class="chip r">NQ</span>':'';
+ return '<span class="chip '+cls+'">'+DISP_LABEL[c.disp]+'</span>'+q;
 }
 function renderCallLog(){
  var q=(document.getElementById('lfSearch').value||'').toLowerCase();
@@ -520,6 +543,37 @@ function confirmSessionClose(id){
  fbPut('calls/'+id,c);renderDash();toast(c.n+' — sold! '+fmt$(p.rate)+' 🎉');
 }
 
+// ─── Quick Inbound (dashboard) ───
+var qi={qual:null,out:null};
+function qiSetQual(q){qi.qual=q;
+ document.getElementById('qiQ').className='pill'+(q==='q'?' on g':'');
+ document.getElementById('qiNQ').className='pill'+(q==='nq'?' on r':'');
+}
+function qiSetOut(o){qi.out=qi.out===o?null:o;
+ document.getElementById('qiClosed').className='pill'+(qi.out==='closed'?' on g':'');
+ document.getElementById('qiNoClose').className='pill'+(qi.out==='noclose'?' on':'');
+ var s=document.getElementById('qiProd');
+ s.style.display=qi.out==='closed'?'':'none';
+ if(qi.out==='closed'&&!s.options.length)activeProducts().forEach(function(p){var o=document.createElement('option');o.value=p._id;o.textContent=p.name+' — '+fmt$(p.rate);s.appendChild(o);});
+}
+function qiSave(){
+ var name=document.getElementById('qiName').value.trim();
+ if(!name)return toast('Enter the caller\'s name');
+ if(!qi.qual)return toast('Qualified or not?');
+ var call={n:name,dir:'in',d:todayStr(),qual:qi.qual,created:Date.now(),
+  disp:qi.out==='closed'?'showed_closed':'showed_noclose'};
+ if(qi.out==='closed'){
+  var p=DB.products[document.getElementById('qiProd').value];
+  if(p){call.prod=p.name;call.amt=p.rate;}
+ }
+ var id='c_'+uid();DB.calls[id]=call;fbPut('calls/'+id,call);
+ document.getElementById('qiName').value='';
+ qi={qual:null,out:null};
+ ['qiQ','qiNQ','qiClosed','qiNoClose'].forEach(function(x){document.getElementById(x).className='pill';});
+ document.getElementById('qiProd').style.display='none';
+ renderDash();toast('Inbound call logged'+(call.qual==='q'?' — qualified ✅':' — not qualified'));
+}
+
 // ─── Daily Journal ───
 function jid(d){return 'j_'+d;}
 function loadJournalEntry(){
@@ -580,8 +634,11 @@ function generateWeeklyReport(){
  L.push('OUTBOUND');
  L.push('• Dials: '+dials+'  |  Connects: '+conns+(dials?' ('+Math.round(conns/dials*100)+'%)':'')+'  |  Meetings booked: '+booked.length);
  L.push('');
+ var wq=meetings.filter(function(c){return c.qual==='q';}).length;
+ var wnq=meetings.filter(function(c){return c.qual==='nq';}).length;
  L.push('SESSIONS');
  L.push('• Ran: '+live.length+(live.length+noshows?'  |  Show rate: '+Math.round(live.length/(live.length+noshows||1)*100)+'%':'')+'  |  Closes: '+closes.length+'  |  Sales: '+fmt$(sales));
+ if(wq+wnq)L.push('• Inbound qualified: '+wq+'  |  Not qualified: '+wnq+'  ('+Math.round(wq/(wq+wnq)*100)+'% qual rate)');
  if(closes.length){L.push('• Closed: '+closes.map(function(c){return c.n+' — '+(c.prod||'')+' '+fmt$(c.amt);}).join('; '));}
  if(booked.length){L.push('');L.push('MEETINGS BOOKED');booked.forEach(function(n){L.push('• '+n);});}
  var talkNames=Object.keys(talking);
@@ -623,7 +680,13 @@ function copyReport(){
 }
 
 // ─── Log Call ───
-var lc={dir:'in',inOut:null,outOut:null};
+var lc={dir:'in',inOut:null,outOut:null,qual:null};
+function setLcQual(q){
+ lc.qual=lc.qual===q?null:q;
+ document.querySelectorAll('#lcQualPills .pill').forEach(function(p){
+  p.className='pill'+(p.dataset.q===lc.qual?(' on '+(lc.qual==='q'?'g':'r')):'');
+ });
+}
 function initLogForm(){
  if(!document.getElementById('lcDate').value)document.getElementById('lcDate').value=todayStr();
  fillProdSelect();fillNameList();
@@ -699,6 +762,7 @@ function saveLogCall(){
  if(lc.dir==='in'){
   if(!lc.inOut)return toast('Pick an outcome');
   call.dir='in';call.disp=lc.inOut;
+  if(lc.qual)call.qual=lc.qual;
   if(lc.inOut==='showed_closed'){
    var pid=document.getElementById('lcProd').value;
    call.prod=DB.products[pid]?DB.products[pid].name:'';
@@ -715,8 +779,8 @@ function saveLogCall(){
  if(lc.dir==='in')completeNurturesFor(name,id);
  document.getElementById('lcName').value='';document.getElementById('lcNotes').value='';
  document.getElementById('lcAmt').value='';
- lc.inOut=null;lc.outOut=null;
- document.querySelectorAll('#inOutPills .pill,#outOutPills .pill').forEach(function(p){p.classList.remove('on','g','r','a');});
+ lc.inOut=null;lc.outOut=null;lc.qual=null;
+ document.querySelectorAll('#inOutPills .pill,#outOutPills .pill,#lcQualPills .pill').forEach(function(p){p.classList.remove('on','g','r','a');});
  document.getElementById('lcProdWrap').style.display='none';document.getElementById('lcDueWrap').style.display='none';
  toast('Call saved');updateNurtureBadge();fillNameList();renderCallLog();
 }
@@ -921,8 +985,8 @@ function commitImport(){
  parsed.filter(function(p){return p.checked;}).forEach(function(p){
   var call;
   if(p.disp==='meeting_booked'){
-   // Meeting booked = an inbound session on the books; end-of-day prompt asks sold / not sold
-   call={n:p.name.trim(),dir:'in',d:p.date,t:p.time,disp:'scheduled',created:Date.now()};
+   // Meeting booked = an inbound session on the books (qualified — it passed the screen); prompt asks sold / not sold
+   call={n:p.name.trim(),dir:'in',d:p.date,t:p.time,disp:'scheduled',qual:'q',created:Date.now()};
   }else{
    call={n:p.name.trim(),dir:'out',d:p.date,t:p.time,disp:p.disp,created:Date.now()};
    if(p.disp==='nurture')call.due=addDays(p.date,+DB.settings.nurtureDays||14);
@@ -973,9 +1037,12 @@ function renderDash(){
  var live=inn.filter(function(c){return c.disp==='showed_closed'||c.disp==='showed_noclose';}).length;
  var closes=inn.filter(function(c){return c.disp==='showed_closed';}).length;
  var showPct=(live+inn.filter(function(c){return c.disp==='noshow';}).length)?Math.round(live/(live+inn.filter(function(c){return c.disp==='noshow';}).length)*100)+'%':'—';
+ var nq=inn.filter(function(c){return c.qual==='nq';}).length;
+ var qq=inn.filter(function(c){return c.qual==='q';}).length;
  document.getElementById('inStats').innerHTML=
   stat(sched,'Sessions')+stat(live,'Live','grn')+stat(showPct,'Show %','grn')
-  +stat(closes,'Closes','amb')+stat(live?Math.round(closes/live*100)+'%':'—','Close Rate','amb');
+  +stat(closes,'Closes','amb')+stat(live?Math.round(closes/live*100)+'%':'—','Close Rate','amb')
+  +stat(qq,'Qualified','grn')+stat(nq,'Not Qual','red')+stat((qq+nq)?Math.round(qq/(qq+nq)*100)+'%':'—','Qual %');
  var earned=inn.filter(function(c){return c.disp==='showed_closed';}).reduce(function(s,c){return s+(+c.amt||0);},0);
  var owed=0,paid=0;
  Object.values(DB.invoices).forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;});
