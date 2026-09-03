@@ -138,6 +138,7 @@ tr:last-child td{border-bottom:none}
   <button data-p="y">Year</button>
   <button data-p="all">All</button>
  </div>
+ <div class="muted" id="periodInfo" style="margin:-4px 0 10px 2px"></div>
  <div class="card"><h3>Outbound <span class="rt" id="dashPeriodLbl1"></span></h3>
   <div class="stat-grid" id="outStats"></div>
   <div class="muted" id="outNote"></div>
@@ -280,8 +281,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.1.1';
+var APP_VERSION='1.1.2';
 var CHANGELOG=[
+ ['1.1.2','2026-09-02','Dashboard now shows "X of Y calls stored" under the period filter, so a filtered view is never mistaken for missing data.'],
  ['1.1.1','2026-09-02','Much more forgiving screenshot reading: handles OCR misreads (garbled "Call with", "Today", times, cut-short outcome words). Clearer message when a snapshot can\'t be read.'],
  ['1.1.0','2026-09-02','Screenshot import: paste or drop HubSpot snapshots — OCR reads the calls right off the image. Version tracking added.'],
  ['1.0.0','2026-09-02','First release: inbound/outbound call log, HubSpot text paste, nurture queue, funnel dashboard, invoicing with paid tracking, REP1 history import.']
@@ -646,6 +648,8 @@ function renderDash(){
  var r=periodRange();var cs=callsIn(r[0],r[1]);
  document.getElementById('dashPeriodLbl1').textContent=r[2];
  document.getElementById('dashPeriodLbl2').textContent=r[2];
+ var totAll=Object.keys(DB.calls).length;
+ document.getElementById('periodInfo').textContent='Showing '+r[2].toLowerCase()+': '+cs.length+' of '+totAll+' calls stored — switch the filter above to see the rest.';
  var out=cs.filter(function(c){return c.dir==='out';});
  var dials=out.length;
  var connects=out.filter(function(c){return CONNECT_DISPS[c.disp];}).length;
