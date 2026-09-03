@@ -175,6 +175,14 @@ tr:last-child td{border-bottom:none}
  <div class="card"><h3>Money</h3>
   <div class="stat-grid" id="moneyStats"></div>
  </div>
+ <div class="card"><h3>📓 Daily Journal <span class="rt"><select id="repWeek" style="width:auto;padding:4px 8px;font-size:12px"><option value="0">This week</option><option value="1">Last week</option></select> <button class="btn sm" onclick="generateWeeklyReport()">Manager's Report</button></span></h3>
+  <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+   <input type="date" id="jDate" style="max-width:160px" onchange="loadJournalEntry()">
+   <textarea id="jText" style="flex:1;min-width:220px;min-height:70px" placeholder="What happened today — wins, conversations, things to remember…"></textarea>
+  </div>
+  <div class="btnrow"><button class="btn sm" onclick="saveJournal()">Save Note</button></div>
+  <div id="jList" style="margin-top:10px"></div>
+ </div>
 </div>
 
 <!-- ══════════ CALL LOG ══════════ -->
@@ -320,6 +328,7 @@ tr:last-child td{border-bottom:none}
 <!-- ══════════ INVOICE VIEW ══════════ -->
 <div id="invoiceView">
  <div class="inv-actions">
+  <button class="btn sm grn" id="copyRepBtn" style="display:none" onclick="copyReport()">📋 Copy as text</button>
   <button class="btn sm" onclick="window.print()">🖨️ Print / Save PDF</button>
   <button class="btn sm ghost" onclick="closeInvoice()">Close</button>
  </div>
@@ -331,8 +340,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.3.0';
+var APP_VERSION='1.4.0';
 var CHANGELOG=[
+ ['1.4.0','2026-09-03','Daily Journal on the dashboard (one note per day, tap a past note to edit) and a one-click weekly Manager\'s Report: outbound + session numbers, who closed/booked/in conversation, nurture pipeline, and your daily notes — copy as text or print/PDF.'],
  ['1.3.0','2026-09-03','Recurring billing: products flagged "Monthly (28th)" (like Monthly Base, $4,500) auto-generate a charge on the 28th of each month that flows into that month\'s invoice — never counted as a call or in call stats. Recurring products are hidden from the close/product pickers.'],
  ['1.2.1','2026-09-03','Dark mode (default on) with a ☀️/🌙 toggle in the header; choice remembered per device. Invoices stay white for printing.'],
  ['1.2.0','2026-09-02','Call Log tab: daily activity report with per-day summaries and filters (name, direction, outcome, period); manual entry tucked behind a toggle. Dashboard decluttered (Recent Activity removed). HubSpot "Meeting booked" imports as an inbound session, and the Dashboard prompts Sold / No sale / No-show for each booked meeting at day\'s end. Wrong entries can be deleted from the log.'],
@@ -343,7 +353,7 @@ var CHANGELOG=[
 ];
 // ─── Storage ───
 var BASE='https://duet-crm-default-rtdb.firebaseio.com/oztracker';
-var DB={calls:{},products:{},invoices:{},charges:{},settings:null};
+var DB={calls:{},products:{},invoices:{},charges:{},journal:{},settings:null};
 var CACHE_KEY='oztracker_cache_v1';
 var online=true;
 
@@ -363,7 +373,7 @@ function fbDel(path){
 function loadAll(){
  return fetch(BASE+'.json').then(function(r){return r.json();}).then(function(data){
   data=data||{};
-  DB.calls=data.calls||{};DB.products=data.products||{};DB.invoices=data.invoices||{};DB.charges=data.charges||{};DB.settings=data.settings||null;
+  DB.calls=data.calls||{};DB.products=data.products||{};DB.invoices=data.invoices||{};DB.charges=data.charges||{};DB.journal=data.journal||{};DB.settings=data.settings||null;
   setSync(true);
  }).catch(function(){
   var c=localStorage.getItem(CACHE_KEY);
@@ -508,6 +518,108 @@ function confirmSessionClose(id){
  var c=DB.calls[id];var p=DB.products[document.getElementById('psProd_'+id).value];
  c.disp='showed_closed';c.prod=p.name;c.amt=p.rate;
  fbPut('calls/'+id,c);renderDash();toast(c.n+' — sold! '+fmt$(p.rate)+' 🎉');
+}
+
+// ─── Daily Journal ───
+function jid(d){return 'j_'+d;}
+function loadJournalEntry(){
+ var d=document.getElementById('jDate').value||todayStr();
+ var e=DB.journal[jid(d)];
+ document.getElementById('jText').value=e?e.text:'';
+}
+function saveJournal(){
+ var d=document.getElementById('jDate').value||todayStr();
+ var text=document.getElementById('jText').value.trim();
+ if(!text){delete DB.journal[jid(d)];fbDel('journal/'+jid(d));}
+ else{DB.journal[jid(d)]={d:d,text:text,updated:Date.now()};fbPut('journal/'+jid(d),DB.journal[jid(d)]);}
+ renderJournal();toast('Note saved');
+}
+var DOWJ=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+function renderJournal(){
+ var cutoff=addDays(todayStr(),-9);
+ var es=Object.values(DB.journal).filter(function(e){return e.d>=cutoff;}).sort(function(a,b){return b.d.localeCompare(a.d);});
+ document.getElementById('jList').innerHTML=es.map(function(e){
+  var dt=new Date(e.d+'T12:00:00');
+  return '<div class="nitem" style="cursor:pointer" onclick="document.getElementById(\'jDate\').value=\''+e.d+'\';loadJournalEntry()">'
+   +'<div><div class="who">'+DOWJ[dt.getDay()]+' '+niceDate(e.d)+'</div><div class="meta">'+e.text.replace(/</g,'&lt;').slice(0,140)+(e.text.length>140?'…':'')+'</div></div></div>';
+ }).join('')||'<div class="muted">No notes yet — today\'s note is a two-minute habit that writes your weekly report for you.</div>';
+}
+
+// ─── Weekly Manager's Report ───
+var reportText='';
+function weekRange(back){
+ var t=new Date(todayStr()+'T12:00:00');
+ var dow=(t.getDay()+6)%7; // Mon=0
+ var mon=new Date(t);mon.setDate(t.getDate()-dow-back*7);
+ var sun=new Date(mon);sun.setDate(mon.getDate()+6);
+ return [mon.toISOString().slice(0,10),sun.toISOString().slice(0,10)];
+}
+function generateWeeklyReport(){
+ var back=+document.getElementById('repWeek').value;
+ var r=weekRange(back);var a=r[0],b=r[1];
+ var cs=callsIn(a,b);
+ var out=cs.filter(function(c){return c.dir==='out';});
+ var dials=out.length;
+ var conns=out.filter(function(c){return CONNECT_DISPS[c.disp];}).length;
+ var booked=cs.filter(function(c){return c.disp==='booked';}).map(function(c){return c.n+' ('+niceDate(c.d)+')';});
+ var meetings=cs.filter(function(c){return c.dir==='in';});
+ var live=meetings.filter(function(c){return c.disp==='showed_closed'||c.disp==='showed_noclose';});
+ var closes=meetings.filter(function(c){return c.disp==='showed_closed';});
+ var noshows=meetings.filter(function(c){return c.disp==='noshow';}).length;
+ var sales=closes.reduce(function(s,c){return s+(+c.amt||0);},0);
+ var talking={};
+ out.forEach(function(c){if(CONNECT_DISPS[c.disp]&&c.disp!=='not_interested')talking[c.n]=1;});
+ var nurt=Object.values(DB.calls).filter(function(c){return c.disp==='nurture'&&!c.done;})
+  .sort(function(x,z){return (x.due||'').localeCompare(z.due||'');});
+ var notes=Object.values(DB.journal).filter(function(e){return e.d>=a&&e.d<=b;}).sort(function(x,z){return x.d.localeCompare(z.d);});
+ var period='Week of '+niceDate(a)+' – '+niceDate(b);
+ var L=[];
+ L.push('WEEKLY ACTIVITY REPORT — Steve Maxim');
+ L.push(period);
+ L.push('');
+ L.push('OUTBOUND');
+ L.push('• Dials: '+dials+'  |  Connects: '+conns+(dials?' ('+Math.round(conns/dials*100)+'%)':'')+'  |  Meetings booked: '+booked.length);
+ L.push('');
+ L.push('SESSIONS');
+ L.push('• Ran: '+live.length+(live.length+noshows?'  |  Show rate: '+Math.round(live.length/(live.length+noshows||1)*100)+'%':'')+'  |  Closes: '+closes.length+'  |  Sales: '+fmt$(sales));
+ if(closes.length){L.push('• Closed: '+closes.map(function(c){return c.n+' — '+(c.prod||'')+' '+fmt$(c.amt);}).join('; '));}
+ if(booked.length){L.push('');L.push('MEETINGS BOOKED');booked.forEach(function(n){L.push('• '+n);});}
+ var talkNames=Object.keys(talking);
+ if(talkNames.length){L.push('');L.push('IN CONVERSATION THIS WEEK');L.push('• '+talkNames.join(', '));}
+ L.push('');
+ L.push('NURTURE PIPELINE');
+ L.push('• '+nurt.length+' active follow-up'+(nurt.length!==1?'s':'')+(nurt.length?' — next: '+nurt.slice(0,3).map(function(c){return c.n+' ('+niceDate(c.due)+')';}).join(', '):''));
+ if(notes.length){
+  L.push('');L.push('DAILY NOTES');
+  notes.forEach(function(e){var dt=new Date(e.d+'T12:00:00');L.push('• '+DOWJ[dt.getDay()]+' '+niceDate(e.d)+': '+e.text);});
+ }
+ reportText=L.join('\n');
+ // styled overlay (reuses the invoice frame; print stays white)
+ var h='<div class="inv-head"><div><h1>WEEKLY REPORT</h1><div style="font-size:13px;color:#666">'+period+'</div></div>'
+ +'<div class="no"><b>Steve Maxim</b><br>Closer — OZPros<br>Generated '+niceDate(todayStr())+'</div></div>';
+ h+='<table><tr><th>Outbound</th><th>Sessions</th><th>Results</th></tr>'
+ +'<tr><td>'+dials+' dials · '+conns+' connects'+(dials?' ('+Math.round(conns/dials*100)+'%)':'')+'</td>'
+ +'<td>'+live.length+' ran · '+noshows+' no-show · '+booked.length+' newly booked</td>'
+ +'<td>'+closes.length+' closes · '+fmt$(sales)+'</td></tr></table>';
+ if(closes.length)h+='<h4 style="margin:14px 0 6px;color:#534AB7">Closed</h4><div style="font-size:13px">'+closes.map(function(c){return c.n+' — '+(c.prod||'')+' '+fmt$(c.amt)+' ('+niceDate(c.d)+')';}).join('<br>')+'</div>';
+ if(booked.length)h+='<h4 style="margin:14px 0 6px;color:#534AB7">Meetings booked</h4><div style="font-size:13px">'+booked.join('<br>')+'</div>';
+ if(talkNames.length)h+='<h4 style="margin:14px 0 6px;color:#534AB7">In conversation</h4><div style="font-size:13px">'+talkNames.join(', ')+'</div>';
+ h+='<h4 style="margin:14px 0 6px;color:#534AB7">Nurture pipeline</h4><div style="font-size:13px">'+nurt.length+' active follow-up'+(nurt.length!==1?'s':'')+(nurt.length?' — next: '+nurt.slice(0,5).map(function(c){return c.n+' ('+niceDate(c.due)+')';}).join(', '):'')+'</div>';
+ if(notes.length){h+='<h4 style="margin:14px 0 6px;color:#534AB7">Daily notes</h4>';
+  notes.forEach(function(e){var dt=new Date(e.d+'T12:00:00');
+   h+='<div style="font-size:13px;margin-bottom:6px"><b>'+DOWJ[dt.getDay()]+' '+niceDate(e.d)+'</b> — '+e.text.replace(/</g,'&lt;')+'</div>';});}
+ document.getElementById('invBody').innerHTML=h;
+ document.getElementById('copyRepBtn').style.display='';
+ document.getElementById('invoiceView').classList.add('show');
+}
+function copyReport(){
+ function done(){toast('Report copied — paste it anywhere');}
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(reportText).then(done).catch(fallback);}
+ else fallback();
+ function fallback(){
+  var ta=document.createElement('textarea');ta.value=reportText;document.body.appendChild(ta);
+  ta.select();document.execCommand('copy');document.body.removeChild(ta);done();
+ }
 }
 
 // ─── Log Call ───
@@ -846,7 +958,7 @@ function renderDash(){
  document.getElementById('dashPeriodLbl2').textContent=r[2];
  var totAll=Object.keys(DB.calls).length;
  document.getElementById('periodInfo').textContent='Showing '+r[2].toLowerCase()+': '+cs.length+' of '+totAll+' calls stored — switch the filter above to see the rest.';
- renderPending();
+ renderPending();renderJournal();
  var out=cs.filter(function(c){return c.dir==='out';});
  var dials=out.length;
  var connects=out.filter(function(c){return CONNECT_DISPS[c.disp];}).length;
@@ -1003,9 +1115,10 @@ function viewInvoice(id){
  h+='</table><div class="inv-total">Total Due: '+fmt$(v.total)+'</div>'
  +'<div class="inv-foot">'+(s.invTerms||'')+'</div>';
  document.getElementById('invBody').innerHTML=h;
+ document.getElementById('copyRepBtn').style.display='none';
  document.getElementById('invoiceView').classList.add('show');
 }
-function closeInvoice(){document.getElementById('invoiceView').classList.remove('show');renderBilling();}
+function closeInvoice(){document.getElementById('invoiceView').classList.remove('show');document.getElementById('copyRepBtn').style.display='none';renderBilling();}
 function markSent(id){
  DB.invoices[id].status='sent';fbPut('invoices/'+id+'/status','sent');renderBilling();
 }
@@ -1117,11 +1230,12 @@ var savedTheme='dark';try{savedTheme=localStorage.getItem('oz_theme')||'dark';}c
 applyTheme(savedTheme);
 document.getElementById('verTag').textContent='Calls & Billing · v'+APP_VERSION;
 document.getElementById('lcDate').value=todayStr();
+document.getElementById('jDate').value=todayStr();
 document.getElementById('impDate').value=todayStr();
 loadAll().then(function(){
  if(!DB.settings.seeded&&!Object.keys(DB.calls).length){importSeed();}
  ensureRecurringCharges();
- renderDash();initLogForm();updateNurtureBadge();
+ renderDash();initLogForm();updateNurtureBadge();loadJournalEntry();
 });
 </script>
 </body>
