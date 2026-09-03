@@ -331,8 +331,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.2.1';
+var APP_VERSION='1.3.0';
 var CHANGELOG=[
+ ['1.3.0','2026-09-03','Recurring billing: products flagged "Monthly (28th)" (like Monthly Base, $4,500) auto-generate a charge on the 28th of each month that flows into that month\'s invoice — never counted as a call or in call stats. Recurring products are hidden from the close/product pickers.'],
  ['1.2.1','2026-09-03','Dark mode (default on) with a ☀️/🌙 toggle in the header; choice remembered per device. Invoices stay white for printing.'],
  ['1.2.0','2026-09-02','Call Log tab: daily activity report with per-day summaries and filters (name, direction, outcome, period); manual entry tucked behind a toggle. Dashboard decluttered (Recent Activity removed). HubSpot "Meeting booked" imports as an inbound session, and the Dashboard prompts Sold / No sale / No-show for each booked meeting at day\'s end. Wrong entries can be deleted from the log.'],
  ['1.1.2','2026-09-02','Dashboard now shows "X of Y calls stored" under the period filter, so a filtered view is never mistaken for missing data.'],
@@ -342,7 +343,7 @@ var CHANGELOG=[
 ];
 // ─── Storage ───
 var BASE='https://duet-crm-default-rtdb.firebaseio.com/oztracker';
-var DB={calls:{},products:{},invoices:{},settings:null};
+var DB={calls:{},products:{},invoices:{},charges:{},settings:null};
 var CACHE_KEY='oztracker_cache_v1';
 var online=true;
 
@@ -362,7 +363,7 @@ function fbDel(path){
 function loadAll(){
  return fetch(BASE+'.json').then(function(r){return r.json();}).then(function(data){
   data=data||{};
-  DB.calls=data.calls||{};DB.products=data.products||{};DB.invoices=data.invoices||{};DB.settings=data.settings||null;
+  DB.calls=data.calls||{};DB.products=data.products||{};DB.invoices=data.invoices||{};DB.charges=data.charges||{};DB.settings=data.settings||null;
   setSync(true);
  }).catch(function(){
   var c=localStorage.getItem(CACHE_KEY);
@@ -536,7 +537,37 @@ function setOutOut(o){lc.outOut=o;
  var w=document.getElementById('lcDueWrap');w.style.display=o==='nurture'?'':'none';
  if(o==='nurture')document.getElementById('lcDue').value=addDays(document.getElementById('lcDate').value||todayStr(),+DB.settings.nurtureDays||14);
 }
-function activeProducts(){return Object.keys(DB.products).map(function(k){var p=DB.products[k];p._id=k;return p;}).filter(function(p){return p.active;}).sort(function(a,b){return (a.order||9)-(b.order||9);});}
+// Recurring products (e.g. Monthly Base) are billing-only — never offered as a call/close product
+function activeProducts(){return Object.keys(DB.products).map(function(k){var p=DB.products[k];p._id=k;return p;}).filter(function(p){return p.active&&!p.recurring;}).sort(function(a,b){return (a.order||9)-(b.order||9);});}
+
+// ─── Recurring charges (Monthly Base — generated on the 28th) ───
+function ensureRecurringCharges(){
+ var today=todayStr();var curYM=today.slice(0,7);var day=+today.slice(8,10);
+ Object.keys(DB.products).forEach(function(pid){
+  var p=DB.products[pid];
+  if(!p.recurring||!p.active)return;
+  var start=p.recurStart||curYM;
+  var y=+start.slice(0,4),m=+start.slice(5,7);
+  var cy=+curYM.slice(0,4),cm=+curYM.slice(5,7);
+  while(y<cy||(y===cy&&m<=cm)){
+   var ym=y+'-'+String(m).padStart(2,'0');
+   if(ym!==curYM||day>=28){
+    var exists=Object.keys(DB.charges).some(function(k){return DB.charges[k].prodId===pid&&DB.charges[k].month===ym;});
+    if(!exists){
+     var id='g_'+uid();
+     DB.charges[id]={prodId:pid,prod:p.name,month:ym,amt:+p.rate||0,d:ym+'-28',created:Date.now()};
+     fbPut('charges/'+id,DB.charges[id]);
+     toast(p.name+' added to '+monthName(ym)+' billing');
+    }
+   }
+   m++;if(m>12){m=1;y++;}
+  }
+ });
+}
+function chargesFor(ym,unbilledOnly){
+ return Object.keys(DB.charges).map(function(k){var c=DB.charges[k];c._id=k;return c;})
+  .filter(function(c){return c.month===ym&&(!unbilledOnly||!c.inv);});
+}
 function fillProdSelect(){
  var s=document.getElementById('lcProd');s.innerHTML='';
  activeProducts().forEach(function(p){var o=document.createElement('option');o.value=p._id;o.textContent=p.name+' — '+fmt$(p.rate);s.appendChild(o);});
@@ -836,7 +867,8 @@ function renderDash(){
  var earned=inn.filter(function(c){return c.disp==='showed_closed';}).reduce(function(s,c){return s+(+c.amt||0);},0);
  var owed=0,paid=0;
  Object.values(DB.invoices).forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;});
- var unbilled=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
+ var unbilled=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0)
+  +Object.values(DB.charges).filter(function(c){return !c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
  document.getElementById('moneyStats').innerHTML=
   stat(fmt$(earned),'Earned ('+r[2]+')','grn')+stat(fmt$(unbilled),'Unbilled','amb')+stat(fmt$(owed),'Invoiced, Unpaid','red')+stat(fmt$(paid),'Paid (all time)','grn');
  updateNurtureBadge();
@@ -900,6 +932,7 @@ function renderBillingInit(){
  var sel=document.getElementById('billMonth');
  var months={};
  Object.values(DB.calls).forEach(function(c){if(c.dir==='in'&&c.disp==='showed_closed')months[c.d.slice(0,7)]=1;});
+ Object.values(DB.charges).forEach(function(c){months[c.month]=1;});
  months[todayStr().slice(0,7)]=1;
  var keys=Object.keys(months).sort().reverse();
  var cur=sel.value||todayStr().slice(0,7);
@@ -914,12 +947,14 @@ function unbilledFor(ym){
 function renderBilling(){
  var ym=document.getElementById('billMonth').value;
  var rows=unbilledFor(ym);
+ var chs=chargesFor(ym,true);
  var h='<tr><th>Date</th><th>Client</th><th>Product</th><th style="text-align:right">Amount</th></tr>';
  var tot=0;
  rows.forEach(function(c){tot+=+c.amt;h+='<tr><td>'+niceDate(c.d)+'</td><td>'+c.n+'</td><td>'+(c.prod||'')+'</td><td style="text-align:right">'+fmt$(c.amt)+'</td></tr>';});
- if(rows.length)h+='<tr><td colspan="3" style="font-weight:700">Total</td><td style="text-align:right;font-weight:700">'+fmt$(tot)+'</td></tr>';
- document.getElementById('unbilledTbl').innerHTML=rows.length?h:'<tr><td class="empty">No unbilled closes for '+monthName(ym)+'</td></tr>';
- document.getElementById('genInvBtn').disabled=!rows.length;
+ chs.forEach(function(c){tot+=+c.amt;h+='<tr><td>'+niceDate(c.d)+'</td><td class="muted">—</td><td>📅 '+c.prod+'</td><td style="text-align:right">'+fmt$(c.amt)+'</td></tr>';});
+ if(rows.length||chs.length)h+='<tr><td colspan="3" style="font-weight:700">Total</td><td style="text-align:right;font-weight:700">'+fmt$(tot)+'</td></tr>';
+ document.getElementById('unbilledTbl').innerHTML=(rows.length||chs.length)?h:'<tr><td class="empty">No unbilled items for '+monthName(ym)+'</td></tr>';
+ document.getElementById('genInvBtn').disabled=!(rows.length||chs.length);
  // invoices table
  var invs=Object.keys(DB.invoices).map(function(k){var v=DB.invoices[k];v._id=k;return v;}).sort(function(a,b){return b.no.localeCompare(a.no);});
  var ih='<tr><th>Invoice</th><th>Month</th><th style="text-align:right">Total</th><th>Status</th><th></th></tr>';
@@ -937,21 +972,25 @@ function renderBilling(){
  // balance stats
  var owed=0,paid=0,draft=0;
  invs.forEach(function(v){if(v.status==='paid')paid+=v.total;else owed+=v.total;if(v.status==='draft')draft+=v.total;});
- var unbilledAll=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
+ var unbilledAll=Object.values(DB.calls).filter(function(c){return c.dir==='in'&&c.disp==='showed_closed'&&(+c.amt||0)>0&&!c.inv;}).reduce(function(s,c){return s+(+c.amt);},0)
+  +Object.values(DB.charges).filter(function(c){return !c.inv;}).reduce(function(s,c){return s+(+c.amt);},0);
  document.getElementById('billStats').innerHTML=
   stat(fmt$(unbilledAll),'Unbilled','amb')+stat(fmt$(owed),'Outstanding','red')+stat(fmt$(paid),'Collected','grn');
 }
 function generateInvoice(){
  var ym=document.getElementById('billMonth').value;
  var rows=unbilledFor(ym);
- if(!rows.length)return;
+ var chs=chargesFor(ym,true);
+ if(!rows.length&&!chs.length)return;
  var seq=Object.values(DB.invoices).filter(function(v){return v.month===ym;}).length+1;
  var no='OZ-'+ym.replace('-','')+'-'+String(seq).padStart(2,'0');
- var lines=rows.map(function(c){return{callId:c._id,date:c.d,name:c.n,prod:c.prod||'',amt:+c.amt};});
+ var lines=rows.map(function(c){return{callId:c._id,date:c.d,name:c.n,prod:c.prod||'',amt:+c.amt};})
+  .concat(chs.map(function(c){return{chargeId:c._id,date:c.d,name:'—',prod:c.prod,amt:+c.amt};}));
  var total=lines.reduce(function(s,l){return s+l.amt;},0);
  var inv={no:no,month:ym,lines:lines,total:total,status:'draft',created:Date.now()};
  var id='i_'+uid();DB.invoices[id]=inv;fbPut('invoices/'+id,inv);
  rows.forEach(function(c){c.inv=id;fbPut('calls/'+c._id+'/inv',id);});
+ chs.forEach(function(c){c.inv=id;fbPut('charges/'+c._id+'/inv',id);});
  renderBilling();viewInvoice(id);toast('Invoice '+no+' created');
 }
 function viewInvoice(id){
@@ -977,7 +1016,10 @@ function markPaid(id){
 function delInvoice(id){
  if(!confirm('Delete this invoice? The closes go back to Unbilled.'))return;
  var v=DB.invoices[id];
- v.lines.forEach(function(l){if(DB.calls[l.callId]){delete DB.calls[l.callId].inv;fbDel('calls/'+l.callId+'/inv');}});
+ v.lines.forEach(function(l){
+  if(l.callId&&DB.calls[l.callId]){delete DB.calls[l.callId].inv;fbDel('calls/'+l.callId+'/inv');}
+  if(l.chargeId&&DB.charges[l.chargeId]){delete DB.charges[l.chargeId].inv;fbDel('charges/'+l.chargeId+'/inv');}
+ });
  delete DB.invoices[id];fbDel('invoices/'+id);renderBilling();
 }
 
@@ -988,12 +1030,13 @@ function renderSettings(){
  document.getElementById('setInvFrom').value=s.invFrom||'';
  document.getElementById('setInvTo').value=s.invTo||'';
  document.getElementById('setInvTerms').value=s.invTerms||'';
- var h='<tr><th>Product</th><th>Rate</th><th>Active</th></tr>';
+ var h='<tr><th>Product</th><th>Rate</th><th>Active</th><th>Monthly (28th)</th></tr>';
  Object.keys(DB.products).sort(function(a,b){return (DB.products[a].order||9)-(DB.products[b].order||9);}).forEach(function(k){
   var p=DB.products[k];
   h+='<tr><td><input type="text" value="'+p.name+'" style="padding:5px 8px;font-size:12px" onchange="updProd(\''+k+'\',\'name\',this.value)"></td>'
   +'<td><input type="number" value="'+p.rate+'" style="padding:5px 8px;font-size:12px;max-width:90px" onchange="updProd(\''+k+'\',\'rate\',+this.value)"></td>'
-  +'<td><input type="checkbox" '+(p.active?'checked':'')+' onchange="updProd(\''+k+'\',\'active\',this.checked)"></td></tr>';
+  +'<td><input type="checkbox" '+(p.active?'checked':'')+' onchange="updProd(\''+k+'\',\'active\',this.checked)"></td>'
+  +'<td><input type="checkbox" '+(p.recurring?'checked':'')+' onchange="setRecurring(\''+k+'\',this.checked)"></td></tr>';
  });
  document.getElementById('prodTbl').innerHTML=h;
  var nCalls=Object.keys(DB.calls).length;
@@ -1003,6 +1046,13 @@ function renderSettings(){
   +CHANGELOG.map(function(c){return '<div style="margin-bottom:8px"><span class="chip p">v'+c[0]+'</span> <span class="muted">'+niceDate(c[1])+'</span><div class="muted" style="margin-top:2px">'+c[2]+'</div></div>';}).join('');
 }
 function updProd(k,f,v){DB.products[k][f]=v;fbPut('products/'+k,DB.products[k]);fillProdSelect();}
+function setRecurring(k,on){
+ var p=DB.products[k];
+ p.recurring=on;
+ if(on&&!p.recurStart)p.recurStart=todayStr().slice(0,7);
+ fbPut('products/'+k,p);fillProdSelect();
+ if(on){ensureRecurringCharges();toast(p.name+' will bill on the 28th each month');}
+}
 function addProduct(){
  var name=prompt('Product name?');if(!name)return;
  var rate=+prompt('Your commission per close ($)?','0')||0;
@@ -1070,6 +1120,7 @@ document.getElementById('lcDate').value=todayStr();
 document.getElementById('impDate').value=todayStr();
 loadAll().then(function(){
  if(!DB.settings.seeded&&!Object.keys(DB.calls).length){importSeed();}
+ ensureRecurringCharges();
  renderDash();initLogForm();updateNurtureBadge();
 });
 </script>
