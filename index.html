@@ -363,8 +363,9 @@ tr:last-child td{border-bottom:none}
 <script>
 'use strict';
 // ─── Version ───
-var APP_VERSION='1.5.1';
+var APP_VERSION='1.5.2';
 var CHANGELOG=[
+ ['1.5.2','2026-09-03','Name hygiene: the importer now strips leading OCR junk ("2 ", "(5) ", "[=] ", "«~~") from names automatically; 40 existing names cleaned in the database.'],
  ['1.5.1','2026-09-03','Dashboard layout: Outbound and Inbound side by side on desktop (stacked on phone); Money card moved to Billing (with Earned This Month); Quick Inbound and Daily Journal stay on the front dash.'],
  ['1.5.0','2026-09-03','Inbound qualification: Quick Inbound Call card on the dashboard (name → Qualified / Not qualified → optional Closed), Qualified / Not Qual / Qual % stats in the Inbound section, Q/NQ tags in the Call Log, and a qualified line in the weekly report. "Meeting booked" imports auto-count as qualified.'],
  ['1.4.0','2026-09-03','Daily Journal on the dashboard (one note per day, tap a past note to edit) and a one-click weekly Manager\'s Report: outbound + session numbers, who closed/booked/in conversation, nurture pipeline, and your daily notes — copy as text or print/PDF.'],
@@ -907,6 +908,7 @@ function parseRowLine(line,baseDate){
  var name=rest.slice(0,t.index).trim()
   .replace(/[>|©@()\[\]~•·«»®™;:,]+$/,'')
   .replace(/\b(t[eo0]?day|yesterd[ao]?y|at|al|ot)\s*$/i,'')
+  .replace(/^(?:\([^)]{1,3}\)|\[[^\]]{0,4}\]|[^A-Za-z])+/,'')
   .trim();
  if(!name)return null;
  var rec={name:name,time:(+t[2])+':'+t[3]+' '+t[4].toUpperCase()+'M',date:baseDate,disp:'none',trunc:false};
@@ -936,7 +938,7 @@ function parsePaste(){
   var row=parseRowLine(line,baseDate);
   if(row){if(cur){parsed.push(cur);cur=null;}parsed.push(row);return;}
   var m=line.match(/^call with (.+)$/i);
-  if(m){if(cur)parsed.push(cur);cur={name:m[1].trim(),time:'',date:baseDate,disp:'none',trunc:false};
+  if(m){if(cur)parsed.push(cur);cur={name:m[1].trim().replace(/^(?:\([^)]{1,3}\)|\[[^\]]{0,4}\]|[^A-Za-z])+/,'').trim(),time:'',date:baseDate,disp:'none',trunc:false};
    if(/(\.\.\.|…)$/.test(cur.name)){cur.trunc=true;cur.name=cur.name.replace(/(\.\.\.|…)$/,'').trim();}
    return;}
   if(!cur)return;
